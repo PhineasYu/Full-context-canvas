@@ -8,7 +8,10 @@
 const LOGOS = /*LOGOS*/null;
 const FONT_DIR = /*FONTDIR*/'';
 const W = 1920, H = 1080, FPS = 60, DURATION = 41;
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const cv = document.getElementById('c');
+let ctx = cv.getContext('2d');
+// reduced-size layer used for cheap soft focus (sized for the strongest blur)
+const SOFT = { k: 4, k2: 4, c: Object.assign(document.createElement('canvas'), { width: 1200, height: 675 }) }; SOFT.x = SOFT.c.getContext('2d');
 
 /* ---------- palette ---------- */
 const INK = '#151B28', MUTED = '#687386', BG = '#FAFBFD', ACCENT = '#3D5CE0', LINE = '#E1E6EE';
@@ -399,8 +402,15 @@ function frame(t) {
   if (t > 3.4 && t < 8.4) {
     ctx.save(); applyCam(cam);
     const imp = P(t, 7.55, 8.2);
+    // soft focus: when the pile falls out of focus, draw it into a quarter-size layer and scale it back up
     const dof = eOut3(P(t, 5.55, 6.15)) * (1 - P(t, 7.3, 7.6));
-    if (dof > 0.01) { ctx.filter = `blur(${(dof * 7).toFixed(2)}px)`; ctx.globalAlpha = 1 - 0.45 * dof; }
+    const main = ctx;
+    if (dof > 0.01) {
+      const k = lerp(1.6, SOFT.k, dof);
+      SOFT.x.setTransform(1, 0, 0, 1, 0, 0); SOFT.x.clearRect(0, 0, SOFT.c.width, SOFT.c.height);
+      SOFT.x.setTransform(new DOMMatrix().scale(1 / k, 1 / k).multiply(ctx.getTransform()));
+      SOFT.k2 = k; ctx = SOFT.x;
+    }
     for (const c of CHAOS) {
       const u = P(t, c.t0, c.t0 + 0.9); if (u <= 0) continue;
       const o = [W / 2 + (c.oi - 3) * 150, 620];
@@ -410,7 +420,11 @@ function frame(t) {
       if (imp > 0) { const k = eInBack(imp); x = lerp(x, W / 2, k); y = lerp(y, H / 2, k); rot += k * 3; sc *= 1 - k; }
       card(x, y, { src: c.src, title: c.title, meta: SRC_NAME[c.src], w: 330, h: 84, rot, scale: sc });
     }
-    ctx.filter = 'none'; ctx.globalAlpha = 1;
+    if (dof > 0.01) {
+      ctx = main; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.globalAlpha = 1 - 0.45 * dof; ctx.drawImage(SOFT.c, 0, 0, W / SOFT.k2, H / SOFT.k2, 0, 0, W, H);
+      ctx.restore();
+    }
     // captions with a white halo so they read over the pile
     const cap = (s, a, glitch) => {
       if (a <= 0) return;
@@ -428,9 +442,10 @@ function frame(t) {
       for (let i = 0; i < line.length; i++) {
         const a = eOut3(P(t, 5.75 + i * 0.03, 6.25 + i * 0.03)), ch = line[i];
         if (a > 0) {
-          ctx.filter = a < 0.98 ? `blur(${((1 - a) * 14).toFixed(2)}px)` : 'none';
           ctx.shadowColor = 'rgba(250,251,253,1)'; ctx.shadowBlur = 36;
-          for (let k = 0; k < 2; k++) text(ch, lx, H / 2 + (1 - a) * 18, 104, { align: 'left', alpha: a * out, ls: -0.03 });
+          const br = (1 - a) * 12, yy = H / 2 + (1 - a) * 18;
+          if (br > 0.5) for (let q = 0; q < 8; q++) text(ch, lx + Math.cos(q * 0.785) * br, yy + Math.sin(q * 0.785) * br, 104, { align: 'left', alpha: (a * out) / 3.2, ls: -0.03 });
+          else for (let k = 0; k < 2; k++) text(ch, lx, yy, 104, { align: 'left', alpha: a * out, ls: -0.03 });
         }
         lx += ctx.measureText(ch).width;
       }
