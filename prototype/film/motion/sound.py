@@ -13,7 +13,9 @@ import json, os, shutil, subprocess, sys, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUDIO = os.path.join(HERE, 'audio')
 API = 'https://api.elevenlabs.io'
-FILM_SECONDS = 41.0
+FILM_SECONDS = 44.4
+# cue times below are written in scene time; the first 15.2s of scene time play over 18.6s of film
+ft = lambda x: x * 18.6 / 15.2 if x <= 15.2 else x + 3.4
 
 def ffmpeg_bin():
     exe = shutil.which('ffmpeg')
@@ -24,17 +26,17 @@ def ffmpeg_bin():
 # ---- music: sections follow the film's beats (music_v1 composition plan, 3s minimum per section) ----
 MUSIC_PLAN = {
     'positive_global_styles': ['modern organic electronic', 'warm analog synths', 'soft felt piano', 'gentle organic percussion',
-                               'breathing pads', '118 bpm', 'optimistic', 'instrumental'],
+                               'breathing pads', '124 bpm', 'playful and bouncy', 'optimistic', 'instrumental'],
     'negative_global_styles': ['vocals', 'lyrics', 'harsh distortion', 'aggressive EDM', 'abrupt ending', 'lo-fi hiss'],
     'sections': [
-        {'section_name': 'Hook', 'duration_ms': 3400, 'lines': [],
-         'positive_local_styles': ['sparse soft plucks', 'felt piano motif', 'airy pad'], 'negative_local_styles': ['drums']},
-        {'section_name': 'Chaos build', 'duration_ms': 4400, 'lines': [],
+        {'section_name': 'Hook', 'duration_ms': 4160, 'lines': [],
+         'positive_local_styles': ['bouncy playful plucks', 'light finger snaps', 'felt piano motif', 'airy pad'], 'negative_local_styles': ['drums']},
+        {'section_name': 'Chaos build', 'duration_ms': 5370, 'lines': [],
          'positive_local_styles': ['rising tension', 'fluttering arpeggios', 'soft riser', 'building percussion'], 'negative_local_styles': ['calm']},
-        {'section_name': 'Reveal', 'duration_ms': 3000, 'lines': [],
-         'positive_local_styles': ['short breath of silence then a warm wide bloom', 'lush chord', 'shimmer'], 'negative_local_styles': ['harsh hit']},
-        {'section_name': 'Flow', 'duration_ms': 4400, 'lines': [],
-         'positive_local_styles': ['flowing groove', 'round bass', 'bright plucks', 'forward motion'], 'negative_local_styles': ['breakdown']},
+        {'section_name': 'Reveal', 'duration_ms': 3660, 'lines': [],
+         'positive_local_styles': ['short breath of silence then a calm warm chord', 'peaceful', 'gentle shimmer'], 'negative_local_styles': ['harsh hit']},
+        {'section_name': 'Flow', 'duration_ms': 5370, 'lines': [],
+         'positive_local_styles': ['lively bouncy groove', 'round bass', 'playful bright plucks', 'light percussion'], 'negative_local_styles': ['breakdown']},
         {'section_name': 'Insight', 'duration_ms': 8400, 'lines': [],
          'positive_local_styles': ['lighter groove', 'glassy keys', 'clear and confident'], 'negative_local_styles': ['heavy drums']},
         {'section_name': 'Synthesis lift', 'duration_ms': 4800, 'lines': [],
@@ -48,9 +50,9 @@ MUSIC_PLAN = {
          'negative_local_styles': ['abrupt stop', 'new melody', 'drums']},
     ],
 }
-MUSIC_PROMPT = ('Instrumental modern organic electronic track for a 41 second product film, 118 bpm, warm synths, soft felt piano and '
-                'gentle organic percussion. Sparse intro, rising build, a warm bloom around 8 seconds, flowing groove, lighter middle, '
-                'uplifting lift, a heartbeat-like wonder section, a bright burst at 33 seconds, then a long natural outro where a warm '
+MUSIC_PROMPT = ('Instrumental modern organic electronic track for a 44 second product film, 124 bpm, playful, warm synths, soft felt piano and '
+                'gentle organic percussion. Sparse intro, rising build, a calm warm chord around 10 seconds, flowing groove, lighter middle, '
+                'uplifting lift, a heartbeat-like wonder section, a bright burst at 36 seconds, then a long natural outro where a warm '
                 'chord rings out and decays into silence. No vocals.')
 
 # ---- sound effects: name -> (prompt, seconds) ----
@@ -59,11 +61,13 @@ SFX = {
     'heart':    ('soft muffled heartbeat thump, warm and organic', 0.7),
     'drop':     ('soft round water droplet bloop, gentle and organic', 0.5),
     'flutter':  ('gentle airy flutter of many paper cards drifting outward, soft whoosh, no harsh hits', 2.2),
+    'tap':      ('two soft felt blocks gently tapping together, warm muted wooden click, calm', 0.6),
+    'calm':     ('peaceful warm felt piano chord with a soft airy shimmer, serene and gentle', 2.6),
     'glitch':   ('short soft static flutter, subtle', 0.6),
     'inhale':   ('deep soft breath inhale rising, organic, pulling inward', 0.9),
     'bloom':    ('deep warm organic bloom like ink spreading in water, soft low swell with a shimmering airy tail', 2.4),
     'shimmer':  ('soft magical sparkle shimmer, gentle and bright', 1.2),
-    'stream':   ('gentle flowing water and soft air, organic and calm', 4.2),
+    'breeze':   ('very soft quiet airy breeze, calm and peaceful, barely there', 4.2),
     'bubble':   ('tiny soft bubble pop underwater, gentle', 0.5),
     'synapse':  ('organic synapse firing, soft wet crackle with a gentle bubbly tail, biological, not electronic', 1.0),
     'breath':   ('soft breathy whoosh, organic', 0.7),
@@ -77,11 +81,11 @@ SFX = {
     'sting':    ('warm gentle felt piano chord with soft chime, ringing out and fading naturally', 3.5),
 }
 # ---- cue sheet: (seconds, sfx, volume) ----
-CUES = [(0.05, 'swell', 0.6), (0.75, 'heart', 0.8)]
-CUES += [(2.0 + i * 0.09, 'drop', 0.45) for i in range(7)]
-CUES += [(3.42, 'flutter', 0.75), (5.72, 'glitch', 0.55), (7.45, 'inhale', 0.8), (8.15, 'bloom', 0.95), (8.45, 'shimmer', 0.45),
-         (9.8, 'breath', 0.45), (10.2, 'stream', 0.4)]
-CUES += [(11.35 + i * 0.26, 'bubble', 0.3) for i in range(12)]
+CUES = [(0.05, 'swell', 0.5), (0.75, 'heart', 0.7)]
+CUES += [(2.0 + i * 0.09, 'drop', 0.4) for i in range(7)]
+CUES += [(3.42, 'flutter', 0.6), (5.72, 'glitch', 0.3), (7.45, 'inhale', 0.45), (8.68, 'tap', 0.8), (8.72, 'calm', 0.75), (8.9, 'shimmer', 0.3),
+         (9.8, 'breath', 0.4), (10.2, 'breeze', 0.12)]
+CUES += [(11.35 + i * 0.26, 'bubble', 0.24) for i in range(12)]
 CUES += [(15.25, 'breath', 0.55), (16.0, 'drop', 0.6), (16.35, 'synapse', 0.65), (16.55, 'synapse', 0.55), (17.1, 'drop', 0.5), (17.3, 'drop', 0.5),
          (19.45, 'breath', 0.55), (19.9, 'drop', 0.55), (20.55, 'synapse', 0.8), (21.35, 'marimba', 0.7),
          (21.7, 'drop', 0.4), (21.92, 'drop', 0.4), (22.14, 'drop', 0.4),
@@ -89,7 +93,9 @@ CUES += [(15.25, 'breath', 0.55), (16.0, 'drop', 0.6), (16.35, 'synapse', 0.65),
 CUES += [(24.98 + i * 0.36, 'drop', 0.32) for i in range(8)]
 CUES += [(28.4, 'riser', 0.5), (29.0, 'inhale', 0.6), (29.6, 'pulse', 0.7), (30.0, 'drop', 0.5), (30.15, 'drop', 0.5), (30.3, 'drop', 0.5),
          (30.35, 'tendril', 0.65), (30.55, 'tendril', 0.55), (30.75, 'tendril', 0.5),
-         (32.95, 'inhale', 0.5), (33.05, 'bloom', 0.85), (33.9, 'fire', 0.8), (35.9, 'swarm', 0.7), (38.0, 'sting', 0.85)]
+         (32.95, 'inhale', 0.5), (33.05, 'bloom', 0.85), (33.9, 'fire', 0.8), (35.9, 'swarm', 0.7), (38.0, 'sting', 0.85), (38.32, 'tap', 0.5)]
+
+CUES = [(ft(t), n, v) for t, n, v in CUES]
 
 
 def post(path, body, out):

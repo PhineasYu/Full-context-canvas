@@ -171,13 +171,28 @@ function check(x, y, s, color, k) {
   else { ctx.lineTo(...pts[1]); const q = (k - L1) / (1 - L1); ctx.lineTo(lerp(pts[1][0], pts[2][0], q), lerp(pts[1][1], pts[2][1], q)); }
   ctx.stroke(); ctx.restore();
 }
-function mark(x, y, s, k = 1) {   // product mark: rounded square, two neurons, a connection
-  ctx.save(); ctx.translate(x, y); ctx.scale(s / 26, s / 26); ctx.translate(-13, -13);
-  ctx.strokeStyle = INK; ctx.lineWidth = 1.7; ctx.lineCap = 'round';
-  ctx.setLineDash([96 * k, 200]); ctx.beginPath(); ctx.roundRect(1, 1, 24, 24, 7); ctx.stroke(); ctx.setLineDash([]);
-  const d = spring(P(k, 0.3, 1)); ctx.fillStyle = '#6B4FD6'; ctx.beginPath(); ctx.arc(9, 10, 3.2 * d, 0, 7); ctx.fill();
-  ctx.fillStyle = '#45A85A'; ctx.beginPath(); ctx.arc(17, 16, 3.2 * d, 0, 7); ctx.fill();
-  const q = P(k, 0.5, 1); if (q > 0) { ctx.lineWidth = 1.3; ctx.setLineDash([14 * q, 30]); ctx.beginPath(); ctx.moveTo(9, 10); ctx.bezierCurveTo(13, 10, 13, 16, 17, 16); ctx.stroke(); }
+// Product logo: two interlocking blocks (traced from the brand artwork, 92×137 units).
+const LOGO_P = [[0, 0], [92, 0], [92, 29], [63, 29], [63, 4], [48, 4], [48, 48], [4, 48], [4, 64], [29, 64], [29, 93], [0, 93]];
+const LOGO_G = [[62, 45], [92, 45], [92, 137], [0, 137], [0, 108], [27, 108], [27, 133], [45, 133], [45, 90], [88, 90], [88, 75], [62, 75]];
+const LOGO_PC = '#7F5FDC', LOGO_GC = '#5FB548';
+function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const q of pts) ctx.lineTo(q[0], q[1]); ctx.closePath(); }
+// k: 0→1 intro. The blocks rush in from opposite corners, lock together with a squash, sparks and a soft ripple.
+function mark(x, y, s, k = 1, t = 0) {
+  const HIT = 0.42, inK = clamp(k / HIT), after = P(k, HIT, 1), sc = s / 137;
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-46, -68.5);
+  if (k > HIT && k < 1) {   // ripple and sparks at the moment of contact
+    for (let r = 0; r < 2; r++) { const f = P(after, r * 0.12, 0.75 + r * 0.12); if (f <= 0 || f >= 1) continue; ctx.strokeStyle = hexA(r ? LOGO_GC : LOGO_PC, 0.5 * (1 - f)); ctx.lineWidth = 6 * (1 - f) + 1; ctx.beginPath(); ctx.arc(46, 70, 40 + eOutExpo(f) * 190, 0, 7); ctx.stroke(); }
+    const R4 = rng(41);
+    for (let i = 0; i < 18; i++) { const a = R4() * Math.PI * 2, d = eOutExpo(P(after, 0, 0.55)) * (60 + R4() * 90), f = P(after, 0.05, 0.6); if (f >= 1) continue; ctx.fillStyle = hexA(i % 2 ? LOGO_GC : LOGO_PC, 0.9 * (1 - f)); ctx.beginPath(); ctx.arc(46 + Math.cos(a) * d, 70 + Math.sin(a) * d, 4 * (1 - f) + 1, 0, 7); ctx.fill(); }
+  }
+  const e = inK * inK * inK, sq = k >= 1 ? 0 : 0.14 * Math.exp(-6 * after) * Math.sin(after * 20) * (k > HIT ? 1 : 0);
+  const shapes = [[LOGO_P, LOGO_PC, [34, 38], [-230, -190], -0.55, 1], [LOGO_G, LOGO_GC, [58, 100], [230, 190], 0.55, -1]];
+  for (const [pts, col, [cx, cy], [ox, oy], rot, dir] of shapes) {
+    ctx.save(); ctx.globalAlpha *= clamp(inK * 5);
+    ctx.translate(cx + ox * (1 - e), cy + oy * (1 - e)); ctx.rotate(rot * (1 - e)); ctx.scale(1 + sq * dir, 1 - sq * dir); ctx.translate(-cx, -cy);
+    poly(pts); ctx.fillStyle = col; ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -400,24 +415,23 @@ function frame(t) {
   /* flash + wordmark (8.2–10.2) */
   if (t > 8.15 && t < 10.4) {
     const f = P(t, 8.18, 8.9);
-    inkBloom(W / 2, H / 2, P(t, 8.18, 9.3), t, 0.7, 0.16);
-    ctx.save();
-    ctx.fillStyle = `rgba(255,255,255,${0.9 * (1 - P(t, 8.18, 8.5))})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+    inkBloom(W / 2 - 330, H / 2, P(t, 8.7, 9.8), t, 0.55, 0.14);
+    if (t > 8.7) { ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - P(t, 8.7, 9.0))})`; ctx.fillRect(0, 0, W, H); }
     const mv = eInOut(P(t, 9.65, 10.25));
     const x = lerp(W / 2, 250, mv), y = lerp(H / 2, 70, mv), s = lerp(1, 0.32, mv);
     ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-    mark(-420, 0, 118, P(t, 8.3, 9.1));
+    mark(-420, 0, 150, P(t, 8.2, 9.4), t);
     const word = 'Full Context Canvas';
     ctx.font = font(112); ctx.letterSpacing = '-3.4px';
     let cx = -330;
     for (let i = 0; i < word.length; i++) {
-      const a = spring(P(t, 8.45 + i * 0.022, 9.05 + i * 0.022));
+      const a = spring(P(t, 8.74 + i * 0.024, 9.34 + i * 0.024));
       text(word[i], cx, (1 - a) * 50, 112, { align: 'left', alpha: clamp(a * 1.6), ls: -0.03 });
       cx += ctx.measureText(word[i]).width;
     }
     ctx.restore();
   }
-  if (t >= 10.4 && t < 36.2) { ctx.save(); ctx.globalAlpha = 1 - P(t, 35.6, 36.2); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 118, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
+  if (t >= 10.4 && t < 36.2) { ctx.save(); ctx.globalAlpha = 1 - P(t, 35.6, 36.2); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 150, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
 
   /* 4 — sort (9.6–15.2), network stays for the rest */
   if (t > 9.6) {
@@ -563,8 +577,8 @@ function frame(t) {
       const a = P(t, q.t0 - 0.1, q.t0 + 0.2);
       ctx.fillStyle = hexA(q.c, 0.9 * a); ctx.beginPath(); ctx.arc(x, y, q.r * (1 + 0.8 * (1 - u) * u * 4 / 4), 0, 7); ctx.fill();
     }
-    const m = eOut3(P(t, 38.0, 38.8));
-    ctx.save(); ctx.globalAlpha = m; ctx.translate(W / 2 - 340, 690); mark(0, 0, 70, P(t, 38.0, 38.9)); ctx.restore();
+    const m = eOut3(P(t, 38.25, 38.9));
+    ctx.save(); mark(W / 2 - 350, 690, 96, P(t, 37.9, 38.9), t); ctx.restore();
     text('Full Context Canvas', W / 2 + 45, 690, 64, { alpha: m, ls: -0.03 });
     text('It sorts, shows you why, and connects the dots.', W / 2, 785, 32, { alpha: P(t, 38.6, 39.2), color: MUTED, w: 400 });
   }
@@ -573,7 +587,10 @@ function frame(t) {
 }
 
 window.ready = load().then(() => true);
-window.render = (i) => { frame(i / FPS); return cv.toDataURL('image/jpeg', 0.95); };
-window.FILM = { FPS, DURATION };
+// The first half plays ~20% slower than it was authored; everything after 15.2s of scene time is unchanged.
+const SPLIT_FILM = 18.6, SPLIT_SCENE = 15.2, FILM_END = DURATION + SPLIT_FILM - SPLIT_SCENE;
+const sceneTime = (T) => (T <= SPLIT_FILM ? (T * SPLIT_SCENE) / SPLIT_FILM : T - (SPLIT_FILM - SPLIT_SCENE));
+window.render = (i) => { frame(sceneTime(i / FPS)); return cv.toDataURL('image/jpeg', 0.95); };
+window.FILM = { FPS, DURATION: FILM_END };
 </script>
 </body></html>
