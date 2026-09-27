@@ -1,0 +1,466 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#FAFBFD;overflow:hidden}canvas{display:block}</style>
+</head><body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// Full Context Canvas — motion film. Every frame is a pure function of time t (seconds).
+const LOGOS = /*LOGOS*/null;
+const FONT_DIR = /*FONTDIR*/'';
+const W = 1920, H = 1080, FPS = 60, DURATION = 32.6;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+
+/* ---------- palette ---------- */
+const INK = '#151B28', MUTED = '#687386', BG = '#FAFBFD', ACCENT = '#3D5CE0', LINE = '#E1E6EE';
+const GROUPS = [
+  { id: 'ai', name: 'AI & agents', c: '#6B4FD6', x: 1060, y: 470, r: 34 },
+  { id: 'design', name: 'Product design', c: '#2F7FC4', x: 700, y: 320, r: 28 },
+  { id: 'startup', name: 'Startup idea', c: '#179AA6', x: 1420, y: 320, r: 28 },
+  { id: 'learn', name: 'Learning & focus', c: '#45A85A', x: 840, y: 780, r: 26 },
+  { id: 'career', name: 'Career', c: '#2E5A70', x: 1320, y: 790, r: 26 },
+];
+const SOURCES = ['claude', 'chatgpt', 'gemini', 'chrome', 'youtube', 'reddit', 'x'];
+const SRC_NAME = { claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', chrome: 'Chrome', youtube: 'YouTube', reddit: 'Reddit', x: 'X' };
+const TITLES = [
+  ['claude', 'All my saves on one board', 'startup'], ['chatgpt', 'Résumé bullets, with numbers', 'career'],
+  ['gemini', 'What can Google Takeout export?', 'startup'], ['chrome', 'Laws of UX', 'design'],
+  ['youtube', 'Learn any software in 3 days', 'learn'], ['reddit', 'I use 3 AIs. None share memory', 'ai'],
+  ['x', "Show your AI's reasoning", 'ai'], ['youtube', 'Building AI agents with MCP', 'ai'],
+  ['chrome', 'How to Get Startup Ideas', 'startup'], ['reddit', 'What stopped me losing my saves', 'learn'],
+  ['claude', 'Plan a week of deep work', 'learn'], ['x', '12 onboarding patterns', 'design'],
+  ['chatgpt', 'Interview guide: info overload', 'startup'], ['gemini', 'Material 3 motion, key points', 'design'],
+  ['chrome', 'Designer salaries by level', 'career'], ['youtube', 'Portfolio review in 30 seconds', 'career'],
+  ['x', 'Our first 1,000 users', 'startup'], ['claude', 'YC answer, draft 6', 'startup'],
+  ['chatgpt', 'Moodboard prompts', 'design'], ['reddit', 'What got junior designers hired', 'career'],
+  ['claude', 'Explain RAG like I am five', 'ai'], ['chrome', 'Claude tool use docs', 'ai'],
+  ['youtube', 'ADHD systems that stick', 'learn'], ['gemini', 'Feynman + spaced repetition', 'learn'],
+  ['x', 'Context engineering, a thread', 'ai'], ['chrome', 'Design systems gallery', 'design'],
+  ['reddit', 'From designer to design engineer', 'career'], ['chatgpt', 'Notion vs Obsidian vs mymind', 'startup'],
+];
+
+/* ---------- math & easing ---------- */
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut3 = (x) => 1 - Math.pow(1 - x, 3);
+const eOutExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const eInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eInBack = (x) => 2.70158 * x * x * x - 1.70158 * x * x;
+const spring = (x) => (x <= 0 ? 0 : 1 - Math.exp(-7 * x) * Math.cos(13 * x));   // overshoots then settles
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+const bez = (p0, c, p1, u) => [(1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * c[0] + u * u * p1[0], (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * c[1] + u * u * p1[1]];
+const cubic = (p0, c1, c2, p1, u) => { const m = 1 - u; return [m * m * m * p0[0] + 3 * m * m * u * c1[0] + 3 * m * u * u * c2[0] + u * u * u * p1[0], m * m * m * p0[1] + 3 * m * m * u * c1[1] + 3 * m * u * u * c2[1] + u * u * u * p1[1]]; };
+
+/* ---------- assets ---------- */
+const IMG = {};
+async function load() {
+  for (const [w, f] of [[400, 'instrument-sans-latin-400-normal'], [500, 'instrument-sans-latin-500-normal'], [600, 'instrument-sans-latin-600-normal']]) {
+    const ff = new FontFace('Instrument Sans', `url(${FONT_DIR}/${f}.woff2)`, { weight: String(w) });
+    document.fonts.add(await ff.load());
+  }
+  for (const [k, svg] of Object.entries(LOGOS)) {
+    const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); await im.decode(); IMG[k] = im;
+  }
+}
+const font = (size, w = 500) => `${w} ${size}px "Instrument Sans", sans-serif`;
+
+/* ---------- drawing primitives ---------- */
+function text(str, x, y, size, { w = 500, color = INK, align = 'center', alpha = 1, ls = -0.02, base = 'middle' } = {}) {
+  if (alpha <= 0) return;
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.font = font(size, w); ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = base;
+  ctx.letterSpacing = `${ls * size}px`; ctx.fillText(str, x, y); ctx.restore();
+}
+function logoTile(k, x, y, s, { alpha = 1, tile = true } = {}) {
+  if (alpha <= 0 || s <= 0) return;
+  ctx.save(); ctx.globalAlpha *= alpha;
+  if (tile) {
+    ctx.shadowColor = 'rgba(20,30,60,.12)'; ctx.shadowBlur = s * 0.35; ctx.shadowOffsetY = s * 0.08;
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(x - s / 2, y - s / 2, s, s, s * 0.28); ctx.fill();
+    ctx.shadowColor = 'transparent'; ctx.strokeStyle = LINE; ctx.lineWidth = Math.max(1, s * 0.012); ctx.stroke();
+  }
+  const ls = s * (tile ? 0.56 : 1); ctx.drawImage(IMG[k], x - ls / 2, y - ls / 2, ls, ls);
+  ctx.restore();
+}
+function card(x, y, { src, title, meta, w = 300, h = 76, alpha = 1, rot = 0, scale = 1, glow = 0, accent = null } = {}) {
+  if (alpha <= 0 || scale <= 0.01) return;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(scale, scale); ctx.globalAlpha *= alpha;
+  if (glow > 0) { ctx.shadowColor = hexA(accent || ACCENT, 0.55 * glow); ctx.shadowBlur = 40 * glow; }
+  else { ctx.shadowColor = 'rgba(20,30,60,.10)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 6; }
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, 14); ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.strokeStyle = glow > 0 ? hexA(accent || ACCENT, 0.9) : LINE; ctx.lineWidth = glow > 0 ? 2.5 : 1.2; ctx.stroke();
+  const pad = h * 0.24, ls = h * 0.34;
+  ctx.drawImage(IMG[src], -w / 2 + pad, -ls / 2, ls, ls);
+  ctx.font = font(h * 0.235, 500); ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.letterSpacing = '-0.2px';
+  const tx = -w / 2 + pad * 2 + ls * 0.9, maxW = w / 2 - pad - tx;
+  let tt = title; while (ctx.measureText(tt).width > maxW && tt.length > 4) tt = tt.slice(0, -2).trimEnd() + '…';
+  const lineY = meta ? -h * 0.1 : 0;
+  ctx.fillText(tt, tx, lineY);
+  if (meta) { ctx.font = font(h * 0.18, 400); ctx.fillStyle = MUTED; ctx.fillText(meta, tx, h * 0.2); }
+  ctx.restore();
+}
+function taperPath(p0, c, p1, w0, w1, upto = 1, n = 18) {
+  const a = [], b = [];
+  const N = Math.max(2, Math.ceil(n * upto));
+  for (let i = 0; i <= N; i++) {
+    const u = (i / N) * upto, m = 1 - u;
+    const x = m * m * p0[0] + 2 * m * u * c[0] + u * u * p1[0], y = m * m * p0[1] + 2 * m * u * c[1] + u * u * p1[1];
+    const dx = 2 * m * (c[0] - p0[0]) + 2 * u * (p1[0] - c[0]), dy = 2 * m * (c[1] - p0[1]) + 2 * u * (p1[1] - c[1]);
+    const len = Math.hypot(dx, dy) || 1, ww = (w0 + (w1 - w0) * Math.pow(u, 0.6)) / 2;
+    a.push([x - (dy / len) * ww, y + (dx / len) * ww]); b.push([x + (dy / len) * ww, y - (dx / len) * ww]);
+  }
+  ctx.beginPath(); ctx.moveTo(a[0][0], a[0][1]); for (const p of a) ctx.lineTo(p[0], p[1]); for (const p of b.reverse()) ctx.lineTo(p[0], p[1]); ctx.closePath();
+}
+function blob(x, y, r, seed, t, n = 12, amp = 0.28) {
+  const R = rng(seed), pts = [];
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, rr = r * (1 - amp / 2 + amp * R() + 0.05 * Math.sin(t * 1.3 + i * 1.7)); pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.9]); }
+  ctx.beginPath(); ctx.moveTo((pts[0][0] + pts[n - 1][0]) / 2, (pts[0][1] + pts[n - 1][1]) / 2);
+  for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2); }
+  ctx.closePath();
+}
+// Watercolor soma: soft bleed, stubs, pigment pooling toward a darker rim, dark nucleus.
+function soma(g, t, grow = 1, pulse = 0, alpha = 1) {
+  if (grow <= 0 || alpha <= 0) return;
+  const r = g.r * grow * (1 + 0.18 * pulse), { x, y, c } = g, seed = g.id.length * 97 + g.x;
+  ctx.save(); ctx.globalAlpha *= alpha;
+  const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 4.2); halo.addColorStop(0, hexA(c, 0.26 + 0.2 * pulse)); halo.addColorStop(1, hexA(c, 0));
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(x, y, r * 4.2, 0, 7); ctx.fill();
+  ctx.filter = 'blur(6px)'; blob(x + 3, y + 2, r * 1.65, seed + 5, t, 14, 0.45); ctx.fillStyle = hexA(c, 0.18); ctx.fill(); ctx.filter = 'none';
+  const R = rng(seed + 11);
+  for (let i = 0; i < 9; i++) {
+    let a = R() * Math.PI * 2; const L = r * (1.7 + R() * 1.7) * grow, bend = (R() - 0.5) * r * 1.2;
+    const p0 = [x + Math.cos(a) * r * 0.7, y + Math.sin(a) * r * 0.7], p1 = [x + Math.cos(a) * L, y + Math.sin(a) * L];
+    taperPath(p0, [(p0[0] + p1[0]) / 2 - Math.sin(a) * bend, (p0[1] + p1[1]) / 2 + Math.cos(a) * bend], p1, r * 0.22, 0.6);
+    ctx.fillStyle = hexA(c, 0.5); ctx.fill();
+  }
+  const body = ctx.createRadialGradient(x - r * 0.2, y - r * 0.2, 0, x, y, r * 1.1);
+  body.addColorStop(0, hexA(c, 0.5)); body.addColorStop(0.7, hexA(c, 0.8)); body.addColorStop(1, hexA(c, 0.97));
+  blob(x, y, r, seed, t); ctx.fillStyle = body; ctx.fill(); ctx.strokeStyle = hexA(c, 0.7); ctx.lineWidth = r * 0.09; ctx.stroke();
+  const S = rng(seed + 3); for (let i = 0; i < 3; i++) { const a = S() * 7, d = S() * r * 0.5; ctx.fillStyle = hexA(c, 0.55); ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (0.08 + S() * 0.1), 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgba(14,26,51,.5)'; ctx.beginPath(); ctx.arc(x + r * 0.12, y - r * 0.12, r * 0.2, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function chip(x, y, label, color, { alpha = 1, scale = 1, size = 26, logo = null, pct = null } = {}) {
+  if (alpha <= 0 || scale <= 0.01) return;
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.globalAlpha *= alpha;
+  ctx.font = font(size, 500); ctx.letterSpacing = '-0.2px';
+  const tw = ctx.measureText(label).width, lw = logo ? size * 1.1 : size * 0.55, pw = pct ? size * 2.6 : 0;
+  const w = tw + lw + pw + size * 1.4, h = size * 1.75;
+  ctx.shadowColor = 'rgba(20,30,60,.12)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h / 2); ctx.fill(); ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = hexA(color, 0.35); ctx.lineWidth = 1.5; ctx.stroke();
+  let cx = -w / 2 + size * 0.7;
+  if (logo) { ctx.drawImage(IMG[logo], cx, -size * 0.45, size * 0.9, size * 0.9); cx += lw; }
+  else { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx + size * 0.2, 0, size * 0.2, 0, 7); ctx.fill(); cx += lw; }
+  ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, cx, 1);
+  if (pct) { ctx.fillStyle = MUTED; ctx.font = font(size * 0.85, 500); ctx.fillText(pct, cx + tw + size * 0.6, 1); }
+  ctx.restore();
+}
+function check(x, y, s, color, k) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); const pts = [[x - s * 0.35, y], [x - s * 0.08, y + s * 0.28], [x + s * 0.4, y - s * 0.3]];
+  const L1 = 0.45; ctx.moveTo(...pts[0]);
+  if (k < L1) ctx.lineTo(lerp(pts[0][0], pts[1][0], k / L1), lerp(pts[0][1], pts[1][1], k / L1));
+  else { ctx.lineTo(...pts[1]); const q = (k - L1) / (1 - L1); ctx.lineTo(lerp(pts[1][0], pts[2][0], q), lerp(pts[1][1], pts[2][1], q)); }
+  ctx.stroke(); ctx.restore();
+}
+function mark(x, y, s, k = 1) {   // product mark: rounded square, two neurons, a connection
+  ctx.save(); ctx.translate(x, y); ctx.scale(s / 26, s / 26); ctx.translate(-13, -13);
+  ctx.strokeStyle = INK; ctx.lineWidth = 1.7; ctx.lineCap = 'round';
+  ctx.setLineDash([96 * k, 200]); ctx.beginPath(); ctx.roundRect(1, 1, 24, 24, 7); ctx.stroke(); ctx.setLineDash([]);
+  const d = spring(P(k, 0.3, 1)); ctx.fillStyle = '#6B4FD6'; ctx.beginPath(); ctx.arc(9, 10, 3.2 * d, 0, 7); ctx.fill();
+  ctx.fillStyle = '#45A85A'; ctx.beginPath(); ctx.arc(17, 16, 3.2 * d, 0, 7); ctx.fill();
+  const q = P(k, 0.5, 1); if (q > 0) { ctx.lineWidth = 1.3; ctx.setLineDash([14 * q, 30]); ctx.beginPath(); ctx.moveTo(9, 10); ctx.bezierCurveTo(13, 10, 13, 16, 17, 16); ctx.stroke(); }
+  ctx.restore();
+}
+
+/* ---------- precomputed scene data ---------- */
+const R0 = rng(7);
+// chaos cards
+const CHAOS = Array.from({ length: 64 }, (_, i) => {
+  const [src, title] = TITLES[i % TITLES.length];
+  const oi = SOURCES.indexOf(src);
+  return { src, title, oi, t0: 3.45 + i * 0.045 + R0() * 0.05, ex: 120 + R0() * 1680, ey: 110 + R0() * 860, rot: (R0() - 0.5) * 0.7, sc: 0.75 + R0() * 0.45 };
+});
+// stream cards → dots around somas
+const GI = Object.fromEntries(GROUPS.map((g, i) => [g.id, i]));
+const DOTS = []; const counts = GROUPS.map(() => 0);
+for (let i = 0; i < 70; i++) {
+  const [src, title, gid] = TITLES[(i * 5) % TITLES.length];
+  const g = GROUPS[GI[gid]], k = counts[GI[gid]]++;
+  const a = k * 2.39996 + g.x * 0.01, rr = g.r * 2.3 + 19 * Math.sqrt(k + 1);
+  DOTS.push({ src, title, g, x: g.x + Math.cos(a) * rr, y: g.y + Math.sin(a) * rr * 0.9, d: 5 + R0() * 5, t0: 10.25 + i * 0.052, bend: (R0() - 0.5) * 380 });
+}
+const srcPos = (k) => [150, 190 + SOURCES.indexOf(k) * 116];
+const SPECIAL = { x: 1250, y: 640 };
+
+/* ---------- camera ---------- */
+function camera(t) {
+  let x = W / 2, y = H / 2, z = 1, rot = 0;
+  if (t < 3.4) { z = 1 + 0.03 * t; }
+  else if (t < 7.6) { z = 1.02 + 0.04 * P(t, 3.4, 7.6); const sh = P(t, 5.75, 6.25); if (sh > 0 && sh < 1) { x += Math.sin(t * 90) * 10 * (1 - sh); y += Math.cos(t * 70) * 7 * (1 - sh); } }
+  else if (t < 9.6) { z = 1 + 0.06 * eOut3(P(t, 8.2, 9.6)); }
+  else if (t < 15.2) { z = 1 + 0.05 * P(t, 9.6, 15.2); }
+  else if (t < 19.4) { const k = eInOut(P(t, 15.2, 16.3)); x = lerp(W / 2, 1245, k); y = lerp(H / 2, 480, k); z = lerp(1.05, 1.8, k) + 0.05 * P(t, 16.3, 19.4); }
+  else if (t < 28.4) { const k = eInOut(P(t, 19.4, 20.2)); x = lerp(1245, W / 2, k); y = lerp(480, H / 2, k); z = lerp(1.85, 1.1, k); }
+  else { const k = P(t, 28.4, DURATION); z = lerp(1.12, 0.94, eOut3(k)); rot = -0.04 * k; }
+  return { x, y, z, rot };
+}
+function applyCam(c) { ctx.translate(W / 2, H / 2); ctx.rotate(c.rot); ctx.scale(c.z, c.z); ctx.translate(-c.x, -c.y); }
+
+/* ---------- network (scenes 4–8) ---------- */
+function dotArrived(d, t) { return t >= d.t0 + 1.15; }
+function network(t, { dim = 1 } = {}) {
+  const grow = (g, i) => spring(P(t, 9.75 + i * 0.1, 10.9 + i * 0.1));
+  // pulses when cards arrive
+  const pulse = GROUPS.map(() => 0);
+  for (const d of DOTS) { const dt = t - (d.t0 + 1.15); if (dt > 0 && dt < 0.6) pulse[GI[d.g.id]] += Math.exp(-dt * 7) * 0.5; }
+  ctx.save(); ctx.globalAlpha *= dim;
+  // dendrites to arrived dots
+  for (const d of DOTS) {
+    const k = P(t, d.t0 + 1.05, d.t0 + 1.45); if (k <= 0) continue;
+    const g = d.g, dx = d.x - g.x, dy = d.y - g.y, L = Math.hypot(dx, dy) || 1, bend = ((d.d * 37) % 1 - 0.5) * 0.3 * L;
+    const c = [(g.x + d.x) / 2 - (dy / L) * bend, (g.y + d.y) / 2 + (dx / L) * bend];
+    taperPath([g.x + dx / L * g.r * 0.8, g.y + dy / L * g.r * 0.8], c, [d.x, d.y], 3.2, 0.7, eOut3(k));
+    ctx.fillStyle = hexA(g.c, 0.45); ctx.fill();
+    // signal pulses travelling out along the dendrite
+    if (t > 12) { const ph = ((t * 0.55 + d.d * 0.37) % 1.6) / 1.6; if (ph < 0.8) { const [px, py] = bez([g.x, g.y], c, [d.x, d.y], ph / 0.8); ctx.fillStyle = hexA(g.c, 0.9 * (1 - ph / 0.8)); ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7); ctx.fill(); } }
+  }
+  GROUPS.forEach((g, i) => soma(g, t, grow(g, i), pulse[i]));
+  for (const d of DOTS) {
+    if (!dotArrived(d, t)) continue;
+    const pop = spring(P(t, d.t0 + 1.1, d.t0 + 1.6));
+    ctx.fillStyle = hexA(d.g.c, 0.16); ctx.beginPath(); ctx.arc(d.x, d.y, d.d * 1.9 * pop, 0, 7); ctx.fill();
+    ctx.fillStyle = d.g.c; ctx.beginPath(); ctx.arc(d.x, d.y, d.d * pop, 0, 7); ctx.fill();
+  }
+  GROUPS.forEach((g, i) => text(g.name, g.x, g.y + g.r * 1.55 + 26, 24, { color: INK, alpha: P(t, 10.6 + i * 0.1, 11.2 + i * 0.1) * 0.9 }));
+  ctx.restore();
+}
+function streams(t) {
+  for (const d of DOTS) {
+    const u = P(t, d.t0, d.t0 + 1.15); if (u <= 0 || u >= 1) continue;
+    const p0 = srcPos(d.src), p1 = [d.x, d.y], c = [lerp(p0[0], p1[0], 0.45), (p0[1] + p1[1]) / 2 + d.bend];
+    const e = eInOut(u);
+    // trail
+    const tail = Math.max(0, e - 0.22);
+    ctx.save();
+    const pts = []; for (let s = 0; s <= 12; s++) pts.push(bez(p0, c, p1, lerp(tail, e, s / 12)));
+    for (let s = 1; s < pts.length; s++) { ctx.strokeStyle = hexA(d.g.c, 0.5 * (s / pts.length)); ctx.lineWidth = 1 + 3 * (s / pts.length); ctx.beginPath(); ctx.moveTo(...pts[s - 1]); ctx.lineTo(...pts[s]); ctx.stroke(); }
+    ctx.restore();
+    const [x, y] = bez(p0, c, p1, e), m = P(u, 0.62, 0.95);
+    card(x, y, { src: d.src, title: d.title, w: 250, h: 58, scale: lerp(0.35, 1, spring(P(u, 0, 0.25))) * (1 - m * 0.7), alpha: 1 - m });
+    if (m > 0) { ctx.fillStyle = hexA(d.g.c, m); ctx.beginPath(); ctx.arc(x, y, d.d * m, 0, 7); ctx.fill(); }
+  }
+}
+
+/* ---------- the film ---------- */
+function frame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  const cam = camera(t);
+  // drifting dot grid
+  ctx.save(); applyCam(cam);
+  ctx.fillStyle = 'rgba(40,60,100,.07)';
+  const off = (t * 6) % 28;
+  for (let gx = -400; gx < W + 400; gx += 28) for (let gy = -300; gy < H + 300; gy += 28) { ctx.beginPath(); ctx.arc(gx + off, gy, 1.1, 0, 7); ctx.fill(); }
+  ctx.restore();
+
+  /* 1 — hook (0–3.4) */
+  if (t < 4.2) {
+    ctx.save(); applyCam(cam);
+    const out = P(t, 3.3, 3.8);
+    const up = eInOut(P(t, 1.75, 2.35));
+    const y = lerp(470, 330, up), sz = lerp(128, 96, up);
+    const a1 = spring(P(t, 0.1, 0.8)), a2 = spring(P(t, 0.75, 1.45));
+    ctx.font = font(sz); ctx.letterSpacing = `${-0.03 * sz}px`;
+    const w1 = ctx.measureText('You save ').width, w2 = ctx.measureText('everything.').width, x0 = W / 2 - (w1 + w2) / 2;
+    ctx.save(); ctx.globalAlpha = 1 - out;
+    text('You save ', x0 + (1 - a1) * -60, y + (1 - a1) * 40, sz, { align: 'left', alpha: clamp(a1 * 1.5), ls: -0.03 });
+    text('everything.', x0 + w1, y + (1 - a2) * 60, sz, { align: 'left', alpha: clamp(a2 * 1.5), ls: -0.03, color: INK });
+    const ul = eOutExpo(P(t, 1.3, 1.9)); if (ul > 0) { ctx.fillStyle = ACCENT; ctx.fillRect(x0 + w1, y + sz * 0.52, w2 * ul, sz * 0.06); }
+    ctx.restore();
+    SOURCES.forEach((k, i) => {
+      const a = spring(P(t, 2.0 + i * 0.09, 2.7 + i * 0.09));
+      const x = W / 2 + (i - 3) * 150, yy = 620;
+      logoTile(k, x, yy + (1 - a) * 30 - out * 20, 104 * a * (1 - out * 0.4), { alpha: clamp(a * 2) * (1 - P(t, 3.45, 3.9)) });
+    });
+    const n = Math.round(1284 * eOut3(P(t, 2.3, 3.2)));
+    text(`${n.toLocaleString('en-US')} things saved`, W / 2, 790, 44, { color: MUTED, alpha: P(t, 2.3, 2.6) * (1 - out) });
+    ctx.restore();
+  }
+
+  /* 2 — chaos (3.4–7.6) and 3 — implosion (7.6–8.3) */
+  if (t > 3.4 && t < 8.4) {
+    ctx.save(); applyCam(cam);
+    const imp = P(t, 7.55, 8.2);
+    for (const c of CHAOS) {
+      const u = P(t, c.t0, c.t0 + 0.9); if (u <= 0) continue;
+      const o = [W / 2 + (c.oi - 3) * 150, 620];
+      let x = lerp(o[0], c.ex, eOutExpo(u)), y = lerp(o[1], c.ey, eOutExpo(u)) + 22 * P(t, c.t0 + 0.9, 7.5);
+      let rot = c.rot * eOut3(u) + 0.05 * Math.sin(t * 1.4 + c.ex);
+      let sc = c.sc * spring(P(u, 0, 0.6));
+      if (imp > 0) { const k = eInBack(imp); x = lerp(x, W / 2, k); y = lerp(y, H / 2, k); rot += k * 3; sc *= 1 - k; }
+      card(x, y, { src: c.src, title: c.title, meta: SRC_NAME[c.src], w: 330, h: 84, rot, scale: sc });
+    }
+    // captions with a white halo so they read over the pile
+    const cap = (s, a, glitch) => {
+      if (a <= 0) return;
+      ctx.save(); ctx.shadowColor = 'rgba(250,251,253,1)'; ctx.shadowBlur = 40;
+      if (glitch) { text(s, W / 2 - 6, H / 2, 104, { color: '#E0598B', alpha: a * 0.6, ls: -0.03 }); text(s, W / 2 + 6, H / 2, 104, { color: '#179AA6', alpha: a * 0.6, ls: -0.03 }); }
+      for (let k = 0; k < 3; k++) text(s, W / 2, H / 2, 104, { alpha: a, ls: -0.03 });
+      ctx.restore();
+    };
+    cap('Scattered across 7 apps.', P(t, 4.0, 4.3) * (1 - P(t, 5.55, 5.75)), false);
+    const g = P(t, 5.75, 6.2);
+    cap('Impossible to find.', P(t, 5.75, 5.85) * (1 - P(t, 7.3, 7.6)), g > 0 && g < 1 && Math.floor(t * 30) % 2 === 0);
+    ctx.restore();
+  }
+  /* flash + wordmark (8.2–10.2) */
+  if (t > 8.15 && t < 10.4) {
+    const f = P(t, 8.18, 8.9);
+    ctx.save(); ctx.strokeStyle = hexA(ACCENT, 1 - f); ctx.lineWidth = 30 * (1 - f) + 1; ctx.beginPath(); ctx.arc(W / 2, H / 2, eOutExpo(f) * 1300, 0, 7); ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${0.9 * (1 - P(t, 8.18, 8.5))})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+    const mv = eInOut(P(t, 9.65, 10.25));
+    const x = lerp(W / 2, 250, mv), y = lerp(H / 2, 70, mv), s = lerp(1, 0.32, mv);
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    mark(-420, 0, 118, P(t, 8.3, 9.1));
+    const word = 'Full Context Canvas';
+    ctx.font = font(112); ctx.letterSpacing = '-3.4px';
+    let cx = -330;
+    for (let i = 0; i < word.length; i++) {
+      const a = spring(P(t, 8.45 + i * 0.022, 9.05 + i * 0.022));
+      text(word[i], cx, (1 - a) * 50, 112, { align: 'left', alpha: clamp(a * 1.6), ls: -0.03 });
+      cx += ctx.measureText(word[i]).width;
+    }
+    ctx.restore();
+  }
+  if (t >= 10.4 && t < 28.4) { ctx.save(); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 118, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
+
+  /* 4 — sort (9.6–15.2), network stays for the rest */
+  if (t > 9.6) {
+    ctx.save(); applyCam(cam);
+    const focus = P(t, 15.4, 16.2) * (1 - P(t, 19.2, 19.6));
+    network(t, { dim: 1 - 0.55 * focus });
+    streams(t);
+    // source column
+    SOURCES.forEach((k, i) => {
+      const a = spring(P(t, 9.8 + i * 0.05, 10.4 + i * 0.05)) * (1 - P(t, 14.6, 15.2));
+      const [x, y] = srcPos(k); logoTile(k, x - (1 - a) * 160, y, 78, { alpha: clamp(a * 1.4) });
+    });
+    // 5 — one save, many places
+    const sp = spring(P(t, 16.0, 16.6));
+    if (sp > 0.01 && t < 19.9) {
+      const out = P(t, 19.3, 19.8);
+      for (const [gi, t0] of [[0, 16.35], [2, 16.55]]) {
+        const g = GROUPS[gi], k = eOut3(P(t, t0, t0 + 0.55)); if (k <= 0) continue;
+        const c = [(g.x + SPECIAL.x) / 2 + (gi ? 60 : -60), (g.y + SPECIAL.y) / 2 + 40];
+        ctx.save(); ctx.shadowColor = hexA(g.c, 0.8); ctx.shadowBlur = 16;
+        taperPath([g.x, g.y], c, [SPECIAL.x + (gi ? 100 : -100), SPECIAL.y - 42], 7, 1.5, k); ctx.fillStyle = hexA(g.c, 0.85 * (1 - out)); ctx.fill(); ctx.restore();
+        const ph = ((t - t0) * 0.9) % 1; const [px, py] = bez([g.x, g.y], c, [SPECIAL.x + (gi ? 100 : -100), SPECIAL.y - 42], ph);
+        if (k >= 1) { ctx.fillStyle = hexA('#ffffff', 0.95 * (1 - out)); ctx.beginPath(); ctx.arc(px, py, 3.2, 0, 7); ctx.fill(); }
+      }
+      card(SPECIAL.x, SPECIAL.y, { src: 'reddit', title: 'I use 3 AIs. None share memory', meta: 'r/ChatGPT · saved', w: 330, h: 84, scale: sp * 0.95, alpha: 1 - out, glow: 1 - out });
+      chip(SPECIAL.x - 92, SPECIAL.y + 80, 'AI & agents', GROUPS[0].c, { size: 15, pct: '90%', scale: spring(P(t, 17.1, 17.6)) * 0.95, alpha: 1 - out });
+      chip(SPECIAL.x + 96, SPECIAL.y + 80, 'Startup idea', GROUPS[2].c, { size: 15, pct: '86%', scale: spring(P(t, 17.3, 17.8)) * 0.95, alpha: 1 - out });
+    }
+    ctx.restore();
+    if (t > 11 && t < 15.3) { const a = P(t, 11.0, 11.4) * (1 - P(t, 14.8, 15.2)); text('AI sorts every save.', W / 2, 980 + (1 - a) * 20, 58, { alpha: a, ls: -0.025 }); }
+    if (t > 16.2 && t < 19.6) { const a = eOut3(P(t, 16.3, 16.7)) * (1 - P(t, 19.1, 19.5)); ctx.save(); ctx.shadowColor = BG; ctx.shadowBlur = 30; text('One save. Many places.', W / 2, 150 - (1 - a) * 20, 76, { alpha: a, ls: -0.03 }); ctx.restore(); }
+  }
+
+  /* 6 — trace it back (19.4–23.8) and 7 — synthesize (23.6–28.6): on a white veil */
+  const veil = P(t, 19.5, 20.0) * (1 - P(t, 28.3, 28.9));
+  if (veil > 0) {
+    ctx.fillStyle = `rgba(250,251,253,${0.92 * veil})`; ctx.fillRect(0, 0, W, H);
+    const s6 = 1 - eInBack(P(t, 23.5, 24.0));
+    if (t < 24.1) {
+      const lx = 400 - P(t, 23.5, 24.0) * 600, cxp = 1200 - P(t, 23.5, 24.0) * 1300;
+      const ly = spring(P(t, 19.9, 20.5));
+      logoTile('youtube', lx, 540, 150 * ly, { alpha: clamp(ly * 2) });
+      text('YouTube · Watch later', lx, 650, 24, { color: MUTED, alpha: P(t, 20.3, 20.6) * s6 });
+      const cs = spring(P(t, 20.0, 20.6)), cx0 = cxp + (1 - cs) * 200;
+      // glowing thread from the source to the card
+      const k = eInOut(P(t, 20.55, 21.3));
+      if (k > 0) {
+        const p0 = [lx + 80, 540], p1 = [cx0 - 330, 470], c1 = [lx + 300, 540], c2 = [cx0 - 560, 470];
+        ctx.save(); ctx.lineCap = 'round';
+        for (const [lw, a, blur] of [[16, 0.18, 14], [4, 0.95, 0]]) {
+          ctx.strokeStyle = hexA(ACCENT, a * s6); ctx.lineWidth = lw; ctx.filter = blur ? `blur(${blur / 2}px)` : 'none';
+          ctx.beginPath(); ctx.moveTo(...p0); for (let s = 1; s <= 40; s++) ctx.lineTo(...cubic(p0, c1, c2, p1, (s / 40) * k)); ctx.stroke();
+        }
+        ctx.filter = 'none';
+        if (k >= 1) for (let q = 0; q < 3; q++) { const ph = ((t * 0.8 + q / 3) % 1); const [px, py] = cubic(p0, c1, c2, p1, ph); ctx.fillStyle = hexA('#ffffff', s6); ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill(); ctx.fillStyle = hexA(ACCENT, 0.5 * s6); ctx.beginPath(); ctx.arc(px, py, 10, 0, 7); ctx.fill(); }
+        ctx.restore();
+      }
+      card(cx0, 470, { src: 'youtube', title: 'Learn any software in 3 days', meta: 'YouTube · Watch later', w: 660, h: 150, scale: cs, alpha: clamp(cs * 2) * s6, glow: P(t, 21.1, 21.4) });
+      // original untouched badge
+      const b = spring(P(t, 21.35, 21.85));
+      if (b > 0.01) {
+        ctx.save(); ctx.globalAlpha = s6; ctx.translate(cx0 - 160, 600); ctx.scale(b, b);
+        ctx.fillStyle = 'rgba(46,138,92,.1)'; ctx.beginPath(); ctx.roundRect(-150, -26, 300, 52, 26); ctx.fill();
+        check(-116, 0, 26, '#2E8A5C', P(t, 21.5, 21.9)); text('Original untouched', 12, 1, 24, { color: '#2E8A5C' });
+        ctx.restore();
+      }
+      [[GROUPS[3], 'Learning & focus', '90%', 'A method for learning fast.'], [GROUPS[0], 'AI & agents', '84%', 'Uses AI as a tutor.'], [GROUPS[1], 'Product design', '66%', 'Examples are Figma and Blender.']].forEach(([g, name, pct, why], i) => {
+        const a = spring(P(t, 21.7 + i * 0.22, 22.2 + i * 0.22)); if (a <= 0.01) return;
+        const y = 690 + i * 78, x = cx0 - 330;
+        ctx.save(); ctx.globalAlpha = s6 * clamp(a * 2); ctx.translate((1 - a) * 60, 0);
+        ctx.fillStyle = g.c; ctx.beginPath(); ctx.arc(x + 10, y, 9, 0, 7); ctx.fill();
+        text(name, x + 34, y - 12, 26, { align: 'left' }); text(why, x + 34, y + 20, 21, { align: 'left', color: MUTED, w: 400 });
+        const bw = 150 * eOut3(P(t, 21.9 + i * 0.22, 22.6 + i * 0.22)) * parseInt(pct) / 100;
+        ctx.fillStyle = LINE; ctx.beginPath(); ctx.roundRect(x + 470, y - 16, 150, 8, 4); ctx.fill();
+        ctx.fillStyle = g.c; ctx.beginPath(); ctx.roundRect(x + 470, y - 16, Math.max(1, bw), 8, 4); ctx.fill();
+        text(pct, x + 640, y - 12, 22, { align: 'left', color: MUTED });
+        ctx.restore();
+      });
+      const a = eOut3(P(t, 20.1, 20.5)) * (1 - P(t, 23.3, 23.6));
+      text('See why. Trace it back.', W / 2, 150 - (1 - a) * 20, 76, { alpha: a, ls: -0.03 });
+    }
+    if (t > 23.8) {
+      // left: kinetic lines
+      ['Seven apps.', 'One résumé.', 'Every line cited.'].forEach((s, i) => {
+        const a = spring(P(t, 24.05 + i * 0.3, 24.7 + i * 0.3)) * (1 - P(t, 28.2, 28.5));
+        text(s, 180 + (1 - a) * -80, 380 + i * 118, 92, { align: 'left', alpha: clamp(a * 1.5), ls: -0.035, color: i === 2 ? ACCENT : INK });
+      });
+      // right: document with typed lines and citation chips
+      const d = eOutExpo(P(t, 23.9, 24.6)) * (1 - eInBack(P(t, 28.2, 28.6)));
+      const dx = 1390, dy = 560 + (1 - d) * 700;
+      ctx.save(); ctx.shadowColor = 'rgba(20,30,60,.14)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(dx - 330, dy - 390, 660, 780, 26); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.roundRect(dx - 330, dy - 390, 660, 780, 26); ctx.clip();
+      text('Résumé draft', dx - 280, dy - 320, 34, { align: 'left' });
+      text('Product designer · AI', dx - 280, dy - 278, 22, { align: 'left', color: MUTED });
+      const rows = [[0.92, ['claude', 'reddit']], [0.8, ['claude']], [0.95, ['chatgpt']], [0.7, ['claude']], [0.86, ['gemini', 'chrome']], [0.75, ['chatgpt', 'youtube']], [0.9, ['claude', 'chatgpt', 'x']], [0.66, ['youtube']]];
+      let n = 0;
+      rows.forEach(([len, cites], i) => {
+        const t0 = 24.7 + i * 0.36, k = eOut3(P(t, t0, t0 + 0.32)); if (k <= 0) return;
+        const y = dy - 200 + i * 68, maxw = 400 * len;
+        ctx.fillStyle = '#E9EDF3'; ctx.beginPath(); ctx.roundRect(dx - 280, y - 9, maxw * k, 18, 9); ctx.fill();
+        cites.forEach((src, j) => { const a = spring(P(t, t0 + 0.28 + j * 0.08, t0 + 0.7 + j * 0.08)); n += a > 0.5 ? 1 : 0; logoTile(src, dx - 280 + maxw + 30 + j * 44, y, 38 * a, { alpha: clamp(a * 2) }); });
+      });
+      const cnt = Math.round(16 * eOut3(P(t, 27.4, 28.0)));
+      text(`${cnt} sources · 7 platforms`, dx - 280, dy + 330, 26, { align: 'left', color: ACCENT, alpha: P(t, 27.3, 27.5) });
+      ctx.restore();
+    }
+  }
+
+  /* 8 — end (28.4–32.6) */
+  if (t > 28.9) {
+    const a = eOut3(P(t, 29.0, 29.8));
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 620); bg.addColorStop(0, `rgba(250,251,253,${0.96 * a})`); bg.addColorStop(0.7, `rgba(250,251,253,${0.85 * a})`); bg.addColorStop(1, 'rgba(250,251,253,0)');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    mark(W / 2 - 420, 440, 84, P(t, 29.0, 29.8));
+    text('Full Context Canvas', W / 2 + 50, 440, 80, { alpha: a, ls: -0.03 });
+    const b = spring(P(t, 29.7, 30.4));
+    text('You just save.', W / 2, 590 + (1 - b) * 30, 64, { alpha: clamp(b * 1.5), ls: -0.03, color: INK });
+    text('It sorts, shows you why, and connects the dots.', W / 2, 670, 32, { alpha: P(t, 30.3, 30.8), color: MUTED, w: 400 });
+  }
+  const fadeOut = P(t, DURATION - 0.35, DURATION);
+  if (fadeOut > 0) { ctx.fillStyle = `rgba(250,251,253,${fadeOut})`; ctx.fillRect(0, 0, W, H); }
+}
+
+window.ready = load().then(() => true);
+window.render = (i) => { frame(i / FPS); return cv.toDataURL('image/jpeg', 0.95); };
+window.FILM = { FPS, DURATION };
+</script>
+</body></html>
