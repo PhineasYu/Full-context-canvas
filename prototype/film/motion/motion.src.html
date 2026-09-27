@@ -7,7 +7,7 @@
 // Full Context Canvas — motion film. Every frame is a pure function of time t (seconds).
 const LOGOS = /*LOGOS*/null;
 const FONT_DIR = /*FONTDIR*/'';
-const W = 1920, H = 1080, FPS = 60, DURATION = 32.6;
+const W = 1920, H = 1080, FPS = 60, DURATION = 41;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 
 /* ---------- palette ---------- */
@@ -54,11 +54,18 @@ const cubic = (p0, c1, c2, p1, u) => { const m = 1 - u; return [m * m * m * p0[0
 
 /* ---------- assets ---------- */
 const IMG = {};
+const TEXT_PTS = [];
 async function load() {
   for (const [w, f] of [[400, 'instrument-sans-latin-400-normal'], [500, 'instrument-sans-latin-500-normal'], [600, 'instrument-sans-latin-600-normal']]) {
     const ff = new FontFace('Instrument Sans', `url(${FONT_DIR}/${f}.woff2)`, { weight: String(w) });
     document.fonts.add(await ff.load());
   }
+  // points of "You just save." for the particle ending
+  const oc = document.createElement('canvas'); oc.width = W; oc.height = H; const o = oc.getContext('2d');
+  o.font = font(176, 600); o.letterSpacing = '-4px'; o.textAlign = 'center'; o.textBaseline = 'middle'; o.fillStyle = '#000'; o.fillText('You just save.', W / 2, 450);
+  const px = o.getImageData(0, 0, W, H).data, R1 = rng(99);
+  for (let y = 0; y < H; y += 6) for (let x = 0; x < W; x += 6) if (px[(y * W + x) * 4 + 3] > 140) TEXT_PTS.push([x + (R1() - 0.5) * 2, y + (R1() - 0.5) * 2]);
+  for (let i = TEXT_PTS.length - 1; i > 0; i--) { const j = Math.floor(R1() * (i + 1)); [TEXT_PTS[i], TEXT_PTS[j]] = [TEXT_PTS[j], TEXT_PTS[i]]; }
   for (const [k, svg] of Object.entries(LOGOS)) {
     const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); await im.decode(); IMG[k] = im;
   }
@@ -174,6 +181,53 @@ function mark(x, y, s, k = 1) {   // product mark: rounded square, two neurons, 
   ctx.restore();
 }
 
+// watercolor ink bloom: soft pigment clouds spreading from a point
+function inkBloom(x, y, f, t, scale, alpha = 0.26) {
+  if (f <= 0 || f >= 1) return;
+  ctx.save(); ctx.filter = 'blur(26px)';
+  [['#6B4FD6', 0], ['#179AA6', 1.6], ['#45A85A', 3.1], ['#2F7FC4', 4.5], ['#9A83D9', 5.6]].forEach(([c, a], i) => {
+    const rr = eOutExpo(f) * (420 + i * 110) * scale;
+    blob(x + Math.cos(a + f) * rr * 0.28, y + Math.sin(a + f) * rr * 0.28, rr, 30 + i, t, 14, 0.55);
+    ctx.fillStyle = hexA(c, alpha * (1 - f) * (1 - f)); ctx.fill();
+  });
+  ctx.restore();
+}
+// organic tendril: a wobbling, tapering filament grown along a curve
+function tendril(p0, p1, t, grow, seed, col, w0 = 11, w1 = 2.5) {
+  if (grow <= 0) return [];
+  const c1 = [lerp(p0[0], p1[0], 0.35), p0[1] + (p1[1] - p0[1]) * 0.1 + (seed - 0.5) * 180], c2 = [lerp(p0[0], p1[0], 0.72), p1[1] - (seed - 0.5) * 140];
+  const N = 48, pts = [];
+  for (let i = 0; i <= Math.ceil(N * grow); i++) {
+    const u = Math.min(i / N, grow), b = cubic(p0, c1, c2, p1, u), b2 = cubic(p0, c1, c2, p1, Math.min(1, u + 0.01));
+    const dx = b2[0] - b[0], dy = b2[1] - b[1], L = Math.hypot(dx, dy) || 1, wob = Math.sin(u * 10 + t * 3.2 + seed * 12) * 13 * Math.sin(u * Math.PI);
+    pts.push([b[0] - (dy / L) * wob, b[1] + (dx / L) * wob, -dy / L, dx / L, u]);
+  }
+  const a = [], bb = [];
+  for (const [x, y, nx, ny, u] of pts) { const w = (w0 + (w1 - w0) * Math.pow(u, 0.7)) / 2 * (0.85 + 0.15 * Math.sin(u * 30 + t * 6)); a.push([x + nx * w, y + ny * w]); bb.push([x - nx * w, y - ny * w]); }
+  ctx.save(); ctx.shadowColor = hexA(col, 0.5); ctx.shadowBlur = 18;
+  ctx.beginPath(); ctx.moveTo(...a[0]); for (const q of a) ctx.lineTo(...q); for (const q of bb.reverse()) ctx.lineTo(...q); ctx.closePath();
+  const gr = ctx.createLinearGradient(p0[0], p0[1], p1[0], p1[1]); gr.addColorStop(0, hexA('#6B4FD6', 0.85)); gr.addColorStop(1, hexA(col, 0.85));
+  ctx.fillStyle = gr; ctx.fill(); ctx.restore();
+  return pts;
+}
+// the context core: the whole network condensed into one breathing, glowing cell
+function orb(t, k) {
+  if (k <= 0) return;
+  const [x, y] = ORB, br = 1 + 0.06 * Math.sin(t * 4.2) + 0.03 * Math.sin(t * 9.1), r = 86 * k * br;
+  ctx.save();
+  [['#6B4FD6', 3.4, 0.22, 0], ['#179AA6', 2.6, 0.2, 2.1], ['#45A85A', 2.0, 0.18, 4.2]].forEach(([c, m, a, ph]) => {
+    const ox = Math.cos(t * 0.9 + ph) * r * 0.25, oy = Math.sin(t * 0.9 + ph) * r * 0.25;
+    const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r * m); g.addColorStop(0, hexA(c, a * 1.6)); g.addColorStop(1, hexA(c, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + ox, y + oy, r * m, 0, 7); ctx.fill();
+  });
+  const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r * 1.1);
+  body.addColorStop(0, 'rgba(255,255,255,.95)'); body.addColorStop(0.35, hexA('#9A83D9', 0.9)); body.addColorStop(0.8, hexA('#6B4FD6', 0.95)); body.addColorStop(1, hexA('#179AA6', 0.95));
+  blob(x, y, r, 77, t * 2.2, 14, 0.18); ctx.fillStyle = body; ctx.fill();
+  ctx.strokeStyle = hexA('#6B4FD6', 0.6); ctx.lineWidth = 3; ctx.stroke();
+  for (let i = 0; i < 18; i++) { const a = t * (0.8 + (i % 5) * 0.25) + i * 2.1, rr = r * (0.3 + 0.55 * ((i * 37) % 10) / 10); ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.4 * ((i * 13) % 7) / 7})`; ctx.beginPath(); ctx.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.9, 2 + (i % 3), 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+
 /* ---------- precomputed scene data ---------- */
 const R0 = rng(7);
 // chaos cards
@@ -191,6 +245,17 @@ for (let i = 0; i < 70; i++) {
   const a = k * 2.39996 + g.x * 0.01, rr = g.r * 2.3 + 19 * Math.sqrt(k + 1);
   DOTS.push({ src, title, g, x: g.x + Math.cos(a) * rr, y: g.y + Math.sin(a) * rr * 0.9, d: 5 + R0() * 5, t0: 10.25 + i * 0.052, bend: (R0() - 0.5) * 380 });
 }
+const PARTS = [];
+function particles() {
+  if (PARTS.length) return PARTS;
+  const R3 = rng(5);
+  TEXT_PTS.forEach((p, i) => {
+    const d = DOTS[i % DOTS.length], g = GROUPS[i % GROUPS.length];
+    const start = i < DOTS.length ? [d.x, d.y] : [g.x + (R3() - 0.5) * 520, g.y + (R3() - 0.5) * 380];
+    PARTS.push({ s: start, e: p, c: i < DOTS.length ? d.g.c : g.c, t0: 36.0 + R3() * 0.7, sw: (R3() - 0.5) * 520, r: 2.2 + R3() * 1.6, ph: R3() * 7 });
+  });
+  return PARTS;
+}
 const srcPos = (k) => [150, 190 + SOURCES.indexOf(k) * 116];
 const SPECIAL = { x: 1250, y: 640 };
 
@@ -203,14 +268,27 @@ function camera(t) {
   else if (t < 15.2) { z = 1 + 0.05 * P(t, 9.6, 15.2); }
   else if (t < 19.4) { const k = eInOut(P(t, 15.2, 16.3)); x = lerp(W / 2, 1245, k); y = lerp(H / 2, 480, k); z = lerp(1.05, 1.8, k) + 0.05 * P(t, 16.3, 19.4); }
   else if (t < 28.4) { const k = eInOut(P(t, 19.4, 20.2)); x = lerp(1245, W / 2, k); y = lerp(480, H / 2, k); z = lerp(1.85, 1.1, k); }
-  else { const k = P(t, 28.4, DURATION); z = lerp(1.12, 0.94, eOut3(k)); rot = -0.04 * k; }
+  else if (t < 33) { z = lerp(1.1, 1.0, eInOut(P(t, 28.4, 29.4))); }
+  else { z = 1.0 - 0.07 * eOut3(P(t, 33, 36.5)); rot = -0.02 * P(t, 33, 36.5); }
   return { x, y, z, rot };
 }
 function applyCam(c) { ctx.translate(W / 2, H / 2); ctx.rotate(c.rot); ctx.scale(c.z, c.z); ctx.translate(-c.x, -c.y); }
 
 /* ---------- network (scenes 4–8) ---------- */
 function dotArrived(d, t) { return t >= d.t0 + 1.15; }
+const ORB = [760, 540];
+const condense = (t) => eInOut(P(t, 28.9, 30.1)) * (1 - eOutExpo(P(t, 33.0, 34.1)));
+function dotPos(d, t) {
+  const c = condense(t); if (c <= 0) return [d.x, d.y];
+  const dx = d.x - ORB[0], dy = d.y - ORB[1], r = Math.hypot(dx, dy), a = Math.atan2(dy, dx) + c * 2.6;
+  const rr = lerp(r, 14 + (d.d * 7) % 34, c);
+  return [ORB[0] + Math.cos(a) * rr, ORB[1] + Math.sin(a) * rr];
+}
+// neural firing: a wave spreading out from the orb after it bursts
+const fire = (x, y, t) => { if (t < 33.9 || t > 36.6) return 0; const R2 = (t - 33.9) * 950, dd = Math.hypot(x - ORB[0], y - ORB[1]) - R2; return Math.exp(-(dd * dd) / (2 * 85 * 85)); };
 function network(t, { dim = 1 } = {}) {
+  const cd = condense(t), gone = P(t, 36.0, 36.9);
+  dim *= 1 - gone;
   const grow = (g, i) => spring(P(t, 9.75 + i * 0.1, 10.9 + i * 0.1));
   // pulses when cards arrive
   const pulse = GROUPS.map(() => 0);
@@ -219,21 +297,25 @@ function network(t, { dim = 1 } = {}) {
   // dendrites to arrived dots
   for (const d of DOTS) {
     const k = P(t, d.t0 + 1.05, d.t0 + 1.45); if (k <= 0) continue;
+    if (cd > 0.98) continue;
     const g = d.g, dx = d.x - g.x, dy = d.y - g.y, L = Math.hypot(dx, dy) || 1, bend = ((d.d * 37) % 1 - 0.5) * 0.3 * L;
     const c = [(g.x + d.x) / 2 - (dy / L) * bend, (g.y + d.y) / 2 + (dx / L) * bend];
-    taperPath([g.x + dx / L * g.r * 0.8, g.y + dy / L * g.r * 0.8], c, [d.x, d.y], 3.2, 0.7, eOut3(k));
-    ctx.fillStyle = hexA(g.c, 0.45); ctx.fill();
+    const fw = fire(d.x, d.y, t);
+    taperPath([g.x + dx / L * g.r * 0.8, g.y + dy / L * g.r * 0.8], c, [d.x, d.y], 3.2 + 3 * fw, 0.7, eOut3(k));
+    ctx.fillStyle = hexA(g.c, (0.45 + 0.45 * fw) * (1 - cd) * (1 - cd)); ctx.fill();
     // signal pulses travelling out along the dendrite
     if (t > 12) { const ph = ((t * 0.55 + d.d * 0.37) % 1.6) / 1.6; if (ph < 0.8) { const [px, py] = bez([g.x, g.y], c, [d.x, d.y], ph / 0.8); ctx.fillStyle = hexA(g.c, 0.9 * (1 - ph / 0.8)); ctx.beginPath(); ctx.arc(px, py, 2.6, 0, 7); ctx.fill(); } }
   }
-  GROUPS.forEach((g, i) => soma(g, t, grow(g, i), pulse[i]));
+  GROUPS.forEach((g, i) => soma(g, t, grow(g, i) * (1 - cd * 0.85), pulse[i] + 1.4 * fire(g.x, g.y, t), 1 - cd));
   for (const d of DOTS) {
     if (!dotArrived(d, t)) continue;
-    const pop = spring(P(t, d.t0 + 1.1, d.t0 + 1.6));
-    ctx.fillStyle = hexA(d.g.c, 0.16); ctx.beginPath(); ctx.arc(d.x, d.y, d.d * 1.9 * pop, 0, 7); ctx.fill();
-    ctx.fillStyle = d.g.c; ctx.beginPath(); ctx.arc(d.x, d.y, d.d * pop, 0, 7); ctx.fill();
+    const pop = spring(P(t, d.t0 + 1.1, d.t0 + 1.6)), [x, y] = dotPos(d, t), fw = fire(d.x, d.y, t);
+    if (fw > 0.02) { ctx.fillStyle = hexA(d.g.c, 0.22 * fw); ctx.beginPath(); ctx.arc(x, y, d.d * 5 * fw, 0, 7); ctx.fill(); }
+    ctx.fillStyle = hexA(d.g.c, 0.16); ctx.beginPath(); ctx.arc(x, y, d.d * 1.9 * pop * (1 + fw), 0, 7); ctx.fill();
+    ctx.fillStyle = d.g.c; ctx.beginPath(); ctx.arc(x, y, d.d * pop * (1 - cd * 0.45) * (1 + 0.8 * fw), 0, 7); ctx.fill();
+    if (fw > 0.3) { ctx.fillStyle = `rgba(255,255,255,${0.8 * fw})`; ctx.beginPath(); ctx.arc(x, y, d.d * 0.45, 0, 7); ctx.fill(); }
   }
-  GROUPS.forEach((g, i) => text(g.name, g.x, g.y + g.r * 1.55 + 26, 24, { color: INK, alpha: P(t, 10.6 + i * 0.1, 11.2 + i * 0.1) * 0.9 }));
+  GROUPS.forEach((g, i) => text(g.name, g.x, g.y + g.r * 1.55 + 26, 24, { color: INK, alpha: P(t, 10.6 + i * 0.1, 11.2 + i * 0.1) * 0.9 * (1 - cd) }));
   ctx.restore();
 }
 function streams(t) {
@@ -318,7 +400,8 @@ function frame(t) {
   /* flash + wordmark (8.2–10.2) */
   if (t > 8.15 && t < 10.4) {
     const f = P(t, 8.18, 8.9);
-    ctx.save(); ctx.strokeStyle = hexA(ACCENT, 1 - f); ctx.lineWidth = 30 * (1 - f) + 1; ctx.beginPath(); ctx.arc(W / 2, H / 2, eOutExpo(f) * 1300, 0, 7); ctx.stroke();
+    inkBloom(W / 2, H / 2, P(t, 8.18, 9.3), t, 0.7, 0.16);
+    ctx.save();
     ctx.fillStyle = `rgba(255,255,255,${0.9 * (1 - P(t, 8.18, 8.5))})`; ctx.fillRect(0, 0, W, H); ctx.restore();
     const mv = eInOut(P(t, 9.65, 10.25));
     const x = lerp(W / 2, 250, mv), y = lerp(H / 2, 70, mv), s = lerp(1, 0.32, mv);
@@ -334,7 +417,7 @@ function frame(t) {
     }
     ctx.restore();
   }
-  if (t >= 10.4 && t < 28.4) { ctx.save(); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 118, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
+  if (t >= 10.4 && t < 36.2) { ctx.save(); ctx.globalAlpha = 1 - P(t, 35.6, 36.2); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 118, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
 
   /* 4 — sort (9.6–15.2), network stays for the rest */
   if (t > 9.6) {
@@ -444,18 +527,48 @@ function frame(t) {
     }
   }
 
-  /* 8 — end (28.4–32.6) */
-  if (t > 28.9) {
-    const a = eOut3(P(t, 29.0, 29.8));
-    const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 620); bg.addColorStop(0, `rgba(250,251,253,${0.96 * a})`); bg.addColorStop(0.7, `rgba(250,251,253,${0.85 * a})`); bg.addColorStop(1, 'rgba(250,251,253,0)');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-    mark(W / 2 - 420, 440, 84, P(t, 29.0, 29.8));
-    text('Full Context Canvas', W / 2 + 50, 440, 80, { alpha: a, ls: -0.03 });
-    const b = spring(P(t, 29.7, 30.4));
-    text('You just save.', W / 2, 590 + (1 - b) * 30, 64, { alpha: clamp(b * 1.5), ls: -0.03, color: INK });
-    text('It sorts, shows you why, and connects the dots.', W / 2, 670, 32, { alpha: P(t, 30.3, 30.8), color: MUTED, w: 400 });
+  /* 8 — the context core reaches every AI (28.9–33.2) */
+  const ok = eOut3(P(t, 29.5, 30.3)) * (1 - eInBack(P(t, 32.95, 33.3)));
+  if (ok > 0) {
+    const AIS = [['claude', 1420, 320, '#D97757'], ['chatgpt', 1540, 540, '#10A37F'], ['gemini', 1420, 760, '#5B8DEF']];
+    AIS.forEach(([k, x, y, col], i) => {
+      const grow = eInOut(P(t, 30.35 + i * 0.18, 31.25 + i * 0.18)) * (1 - P(t, 32.8, 33.1));
+      const pts = tendril([ORB[0] + 80, ORB[1] + (y - ORB[1]) * 0.14], [x - 70, y], t, grow, (i + 1) * 0.31, col);
+      if (grow >= 1 && pts.length) for (let q = 0; q < 3; q++) {
+        const ph = (t * 0.75 + q / 3 + i * 0.2) % 1, pt = pts[Math.min(pts.length - 1, Math.floor(ph * pts.length))];
+        const gg = ctx.createRadialGradient(pt[0], pt[1], 0, pt[0], pt[1], 16); gg.addColorStop(0, 'rgba(255,255,255,.95)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(pt[0], pt[1], 16, 0, 7); ctx.fill();
+      }
+      const a = spring(P(t, 30.0 + i * 0.15, 30.6 + i * 0.15)) * (1 - eInBack(P(t, 32.9, 33.25)));
+      const glow = grow >= 1 ? 0.5 + 0.5 * Math.sin(t * 5 + i) : 0;
+      if (glow > 0) { const hg = ctx.createRadialGradient(x, y, 0, x, y, 120); hg.addColorStop(0, hexA(col, 0.25 * glow)); hg.addColorStop(1, hexA(col, 0)); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(x, y, 120, 0, 7); ctx.fill(); }
+      logoTile(k, x, y, 128 * a, { alpha: clamp(a * 2) });
+    });
+    orb(t, ok);
+    const ca = eOut3(P(t, 30.1, 30.6)) * (1 - P(t, 32.7, 33.0));
+    text('Your context. In every AI.', W / 2, 140 - (1 - ca) * 20, 76, { alpha: ca, ls: -0.03 });
+    text('One living memory, shared with the tools you already use.', W / 2, 960, 30, { alpha: P(t, 30.8, 31.2) * (1 - P(t, 32.7, 33.0)), color: MUTED, w: 400 });
   }
-  const fadeOut = P(t, DURATION - 0.35, DURATION);
+  /* 9 — burst back out, neurons fire (33.0–36.0) */
+  inkBloom(ORB[0], ORB[1], P(t, 33.0, 34.2), t, 0.8);
+  if (t > 34.0 && t < 36.2) { const a = eOut3(P(t, 34.1, 34.5)) * (1 - P(t, 35.6, 36.0)); ctx.save(); ctx.shadowColor = BG; ctx.shadowBlur = 30; text('It grows with you.', W / 2, 140 - (1 - a) * 20, 76, { alpha: a, ls: -0.03 }); ctx.restore(); }
+  /* 10 — thousands of neurons gather into the words (35.9–41) */
+  if (t > 35.9) {
+    const parts = particles();
+    for (const q of parts) {
+      const u = eInOut(P(t, q.t0, q.t0 + 1.5)), dx = q.e[0] - q.s[0], dy = q.e[1] - q.s[1], L = Math.hypot(dx, dy) || 1;
+      const c = [(q.s[0] + q.e[0]) / 2 - (dy / L) * q.sw, (q.s[1] + q.e[1]) / 2 + (dx / L) * q.sw];
+      let [x, y] = bez(q.s, c, q.e, u);
+      if (u >= 1) { x += Math.sin(t * 2 + q.ph) * 0.9; y += Math.cos(t * 1.7 + q.ph) * 0.9; }
+      const a = P(t, q.t0 - 0.1, q.t0 + 0.2);
+      ctx.fillStyle = hexA(q.c, 0.9 * a); ctx.beginPath(); ctx.arc(x, y, q.r * (1 + 0.8 * (1 - u) * u * 4 / 4), 0, 7); ctx.fill();
+    }
+    const m = eOut3(P(t, 38.0, 38.8));
+    ctx.save(); ctx.globalAlpha = m; ctx.translate(W / 2 - 340, 690); mark(0, 0, 70, P(t, 38.0, 38.9)); ctx.restore();
+    text('Full Context Canvas', W / 2 + 45, 690, 64, { alpha: m, ls: -0.03 });
+    text('It sorts, shows you why, and connects the dots.', W / 2, 785, 32, { alpha: P(t, 38.6, 39.2), color: MUTED, w: 400 });
+  }
+  const fadeOut = eInOut(P(t, DURATION - 1.2, DURATION));
   if (fadeOut > 0) { ctx.fillStyle = `rgba(250,251,253,${fadeOut})`; ctx.fillRect(0, 0, W, H); }
 }
 

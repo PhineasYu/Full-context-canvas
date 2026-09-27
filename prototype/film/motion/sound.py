@@ -13,7 +13,7 @@ import json, os, shutil, subprocess, sys, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUDIO = os.path.join(HERE, 'audio')
 API = 'https://api.elevenlabs.io'
-FILM_SECONDS = 32.6
+FILM_SECONDS = 41.0
 
 def ffmpeg_bin():
     exe = shutil.which('ffmpeg')
@@ -23,61 +23,73 @@ def ffmpeg_bin():
 
 # ---- music: sections follow the film's beats (music_v1 composition plan, 3s minimum per section) ----
 MUSIC_PLAN = {
-    'positive_global_styles': ['modern minimal electronic', 'clean tech product launch', 'warm analog synths',
-                               'crisp percussion', '122 bpm', 'optimistic', 'instrumental'],
-    'negative_global_styles': ['vocals', 'lyrics', 'heavy distortion', 'aggressive dubstep', 'lo-fi hiss'],
+    'positive_global_styles': ['modern organic electronic', 'warm analog synths', 'soft felt piano', 'gentle organic percussion',
+                               'breathing pads', '118 bpm', 'optimistic', 'instrumental'],
+    'negative_global_styles': ['vocals', 'lyrics', 'harsh distortion', 'aggressive EDM', 'abrupt ending', 'lo-fi hiss'],
     'sections': [
         {'section_name': 'Hook', 'duration_ms': 3400, 'lines': [],
-         'positive_local_styles': ['sparse plucked synth motif', 'soft kick', 'airy pad'], 'negative_local_styles': ['drums fill']},
+         'positive_local_styles': ['sparse soft plucks', 'felt piano motif', 'airy pad'], 'negative_local_styles': ['drums']},
         {'section_name': 'Chaos build', 'duration_ms': 4400, 'lines': [],
-         'positive_local_styles': ['rising tension', 'busy arpeggios', 'riser', 'snare roll building'], 'negative_local_styles': ['calm']},
-        {'section_name': 'Reveal drop', 'duration_ms': 3000, 'lines': [],
-         'positive_local_styles': ['brief silence then big clean drop', 'wide chord stab', 'shimmer'], 'negative_local_styles': ['harsh']},
+         'positive_local_styles': ['rising tension', 'fluttering arpeggios', 'soft riser', 'building percussion'], 'negative_local_styles': ['calm']},
+        {'section_name': 'Reveal', 'duration_ms': 3000, 'lines': [],
+         'positive_local_styles': ['short breath of silence then a warm wide bloom', 'lush chord', 'shimmer'], 'negative_local_styles': ['harsh hit']},
         {'section_name': 'Flow', 'duration_ms': 4400, 'lines': [],
-         'positive_local_styles': ['driving groove', 'bouncy bass', 'bright plucks', 'forward motion'], 'negative_local_styles': ['breakdown']},
+         'positive_local_styles': ['flowing groove', 'round bass', 'bright plucks', 'forward motion'], 'negative_local_styles': ['breakdown']},
         {'section_name': 'Insight', 'duration_ms': 8400, 'lines': [],
-         'positive_local_styles': ['lighter groove', 'glassy keys', 'confident and clear'], 'negative_local_styles': ['heavy drums']},
+         'positive_local_styles': ['lighter groove', 'glassy keys', 'clear and confident'], 'negative_local_styles': ['heavy drums']},
         {'section_name': 'Synthesis lift', 'duration_ms': 4800, 'lines': [],
          'positive_local_styles': ['energy lift', 'full groove', 'uplifting chords'], 'negative_local_styles': ['sad']},
-        {'section_name': 'Outro', 'duration_ms': 4600, 'lines': [],
-         'positive_local_styles': ['resolve on warm chord', 'gentle piano sting', 'fade into air'], 'negative_local_styles': ['abrupt ending']},
+        {'section_name': 'Living memory', 'duration_ms': 4600, 'lines': [],
+         'positive_local_styles': ['heartbeat-like soft pulse', 'soaring warm pads', 'wonder'], 'negative_local_styles': ['busy drums']},
+        {'section_name': 'Neurons fire', 'duration_ms': 3000, 'lines': [],
+         'positive_local_styles': ['bright sparkling arpeggio burst', 'peak energy', 'joyful'], 'negative_local_styles': ['dark']},
+        {'section_name': 'Outro', 'duration_ms': 6000, 'lines': [],
+         'positive_local_styles': ['drums drop out', 'final warm sustained chord that rings out slowly', 'soft piano notes decaying into silence', 'natural long ending'],
+         'negative_local_styles': ['abrupt stop', 'new melody', 'drums']},
     ],
 }
-MUSIC_PROMPT = ('Instrumental modern minimal electronic track for a 33 second tech product film, 122 bpm, warm synths and crisp '
-                'percussion. Sparse intro, tension build with a riser, a clean drop around 8 seconds, driving groove, lighter '
-                'middle, uplifting lift, and a warm resolving outro. No vocals.')
+MUSIC_PROMPT = ('Instrumental modern organic electronic track for a 41 second product film, 118 bpm, warm synths, soft felt piano and '
+                'gentle organic percussion. Sparse intro, rising build, a warm bloom around 8 seconds, flowing groove, lighter middle, '
+                'uplifting lift, a heartbeat-like wonder section, a bright burst at 33 seconds, then a long natural outro where a warm '
+                'chord rings out and decays into silence. No vocals.')
 
 # ---- sound effects: name -> (prompt, seconds) ----
 SFX = {
-    'swell':   ('soft deep cinematic whoosh swell rising, clean UI intro', 1.4),
-    'thump':   ('soft punchy UI text impact thump, clean, short', 0.6),
-    'pop':     ('bubbly soft UI pop, tiny and clean', 0.5),
-    'burst':   ('explosive burst of many paper cards flying outward, fluttery whoosh', 2.0),
-    'glitch':  ('short digital glitch stutter, clean UI', 0.6),
-    'suck':    ('reverse suction whoosh rising fast into an implosion', 0.8),
-    'boom':    ('deep cinematic impact boom with a bright shimmering tail', 2.2),
-    'shimmer': ('magical sparkle shimmer, soft and bright', 1.2),
-    'stream':  ('gentle continuous airy whoosh of many small objects flying past', 4.2),
-    'tick':    ('soft glassy UI tick, very short', 0.5),
-    'zap':     ('clean futuristic electric line drawing zap, soft', 0.9),
-    'swoosh':  ('smooth quick UI swoosh', 0.6),
-    'ding':    ('bright positive UI success chime', 0.9),
-    'typing':  ('fast soft laptop keyboard typing, clean', 3.0),
-    'riser':   ('warm airy riser swell into calm', 1.6),
-    'sting':   ('gentle warm piano chime logo sting', 2.2),
+    'swell':    ('soft airy breath swelling in, warm and organic', 1.4),
+    'heart':    ('soft muffled heartbeat thump, warm and organic', 0.7),
+    'drop':     ('soft round water droplet bloop, gentle and organic', 0.5),
+    'flutter':  ('gentle airy flutter of many paper cards drifting outward, soft whoosh, no harsh hits', 2.2),
+    'glitch':   ('short soft static flutter, subtle', 0.6),
+    'inhale':   ('deep soft breath inhale rising, organic, pulling inward', 0.9),
+    'bloom':    ('deep warm organic bloom like ink spreading in water, soft low swell with a shimmering airy tail', 2.4),
+    'shimmer':  ('soft magical sparkle shimmer, gentle and bright', 1.2),
+    'stream':   ('gentle flowing water and soft air, organic and calm', 4.2),
+    'bubble':   ('tiny soft bubble pop underwater, gentle', 0.5),
+    'synapse':  ('organic synapse firing, soft wet crackle with a gentle bubbly tail, biological, not electronic', 1.0),
+    'breath':   ('soft breathy whoosh, organic', 0.7),
+    'marimba':  ('warm soft marimba note, gentle success', 1.0),
+    'typing':   ('soft muffled gentle typing', 3.0),
+    'riser':    ('warm airy organic swell rising', 1.6),
+    'pulse':    ('deep warm organic pulsing hum like a slow heartbeat, living and biological', 3.2),
+    'tendril':  ('organic tendrils growing, soft wet stretching with gentle bubbly texture', 1.3),
+    'fire':     ('cascade of soft organic synapse sparks spreading outward, like neurons firing, gentle crackle', 2.2),
+    'swarm':    ('soft swirling swarm of tiny particles gathering, airy shimmer', 2.0),
+    'sting':    ('warm gentle felt piano chord with soft chime, ringing out and fading naturally', 3.5),
 }
 # ---- cue sheet: (seconds, sfx, volume) ----
-CUES = [(0.05, 'swell', 0.7), (0.75, 'thump', 0.8)]
-CUES += [(2.0 + i * 0.09, 'pop', 0.55) for i in range(7)]
-CUES += [(3.42, 'burst', 0.9), (5.72, 'glitch', 0.8), (7.5, 'suck', 0.9), (8.18, 'boom', 1.0), (8.45, 'shimmer', 0.5),
-         (9.8, 'swoosh', 0.5), (10.2, 'stream', 0.45)]
-CUES += [(11.35 + i * 0.26, 'tick', 0.28) for i in range(12)]
-CUES += [(15.25, 'swoosh', 0.6), (16.0, 'pop', 0.7), (16.35, 'zap', 0.6), (16.55, 'zap', 0.55), (17.1, 'pop', 0.55), (17.3, 'pop', 0.55),
-         (19.45, 'swoosh', 0.6), (19.9, 'pop', 0.6), (20.55, 'zap', 0.8), (21.35, 'ding', 0.8),
-         (21.7, 'pop', 0.45), (21.92, 'pop', 0.45), (22.14, 'pop', 0.45),
-         (23.5, 'swoosh', 0.7), (24.05, 'thump', 0.7), (24.35, 'thump', 0.7), (24.65, 'thump', 0.75), (24.7, 'typing', 0.35)]
-CUES += [(24.98 + i * 0.36, 'pop', 0.35) for i in range(8)]
-CUES += [(28.35, 'riser', 0.6), (29.7, 'sting', 0.8)]
+CUES = [(0.05, 'swell', 0.6), (0.75, 'heart', 0.8)]
+CUES += [(2.0 + i * 0.09, 'drop', 0.45) for i in range(7)]
+CUES += [(3.42, 'flutter', 0.75), (5.72, 'glitch', 0.55), (7.45, 'inhale', 0.8), (8.15, 'bloom', 0.95), (8.45, 'shimmer', 0.45),
+         (9.8, 'breath', 0.45), (10.2, 'stream', 0.4)]
+CUES += [(11.35 + i * 0.26, 'bubble', 0.3) for i in range(12)]
+CUES += [(15.25, 'breath', 0.55), (16.0, 'drop', 0.6), (16.35, 'synapse', 0.65), (16.55, 'synapse', 0.55), (17.1, 'drop', 0.5), (17.3, 'drop', 0.5),
+         (19.45, 'breath', 0.55), (19.9, 'drop', 0.55), (20.55, 'synapse', 0.8), (21.35, 'marimba', 0.7),
+         (21.7, 'drop', 0.4), (21.92, 'drop', 0.4), (22.14, 'drop', 0.4),
+         (23.5, 'breath', 0.6), (24.05, 'heart', 0.7), (24.35, 'heart', 0.7), (24.65, 'heart', 0.75), (24.7, 'typing', 0.3)]
+CUES += [(24.98 + i * 0.36, 'drop', 0.32) for i in range(8)]
+CUES += [(28.4, 'riser', 0.5), (29.0, 'inhale', 0.6), (29.6, 'pulse', 0.7), (30.0, 'drop', 0.5), (30.15, 'drop', 0.5), (30.3, 'drop', 0.5),
+         (30.35, 'tendril', 0.65), (30.55, 'tendril', 0.55), (30.75, 'tendril', 0.5),
+         (32.95, 'inhale', 0.5), (33.05, 'bloom', 0.85), (33.9, 'fire', 0.8), (35.9, 'swarm', 0.7), (38.0, 'sting', 0.85)]
 
 
 def post(path, body, out):
@@ -135,8 +147,8 @@ def mix(video, out):
         parts.append(f'[{n}{j}]volume={v},adelay={ms}|{ms}[c{i}]'); labels.append(f'[c{i}]')
     parts.append(''.join(labels) + f'amix=inputs={len(labels)}:normalize=0,alimiter=limit=0.9,apad=whole_dur={FILM_SECONDS}[fx]')
     parts.append('[fx]asplit=2[fxmix][fxkey]')
-    fade = FILM_SECONDS - 1.6
-    parts.append(f'[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.62,atrim=0:{FILM_SECONDS},afade=t=in:d=0.3,afade=t=out:st={fade}:d=1.6[mus]')
+    fade = FILM_SECONDS - 3.5
+    parts.append(f'[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.62,atrim=0:{FILM_SECONDS},afade=t=in:d=0.3,afade=t=out:st={fade}:d=3.5:curve=qsin[mus]')
     parts.append('[mus][fxkey]sidechaincompress=threshold=0.05:ratio=4:attack=10:release=250[duck]')
     parts.append('[duck][fxmix]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]')
     args += ['-filter_complex', ';'.join(parts), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
