@@ -27,7 +27,7 @@ def ffmpeg_bin():
 MUSIC_PLAN = {
     'positive_global_styles': ['modern organic electronic', 'warm analog synths', 'soft felt piano', 'gentle organic percussion',
                                'breathing pads', '124 bpm', 'playful and bouncy', 'optimistic', 'instrumental'],
-    'negative_global_styles': ['vocals', 'lyrics', 'harsh distortion', 'aggressive EDM', 'abrupt ending', 'lo-fi hiss'],
+    'negative_global_styles': ['vocals', 'lyrics', 'harsh distortion', 'aggressive EDM', 'abrupt ending', 'lo-fi hiss', 'minor key', 'descending chord progression', 'classical', 'melancholy'],
     'sections': [
         {'section_name': 'Hook', 'duration_ms': 4160, 'lines': [],
          'positive_local_styles': ['bouncy playful plucks', 'light finger snaps', 'felt piano motif', 'airy pad'], 'negative_local_styles': ['drums']},
@@ -38,9 +38,9 @@ MUSIC_PLAN = {
         {'section_name': 'Flow', 'duration_ms': 5370, 'lines': [],
          'positive_local_styles': ['lively bouncy groove', 'round bass', 'playful bright plucks', 'light percussion'], 'negative_local_styles': ['breakdown']},
         {'section_name': 'Insight', 'duration_ms': 8400, 'lines': [],
-         'positive_local_styles': ['lighter groove', 'glassy keys', 'clear and confident'], 'negative_local_styles': ['heavy drums']},
+         'positive_local_styles': ['uplifting major-key groove', 'rising chord progression', 'bright plucks and claps', 'hopeful and forward'], 'negative_local_styles': ['heavy drums', 'minor key', 'descending melody', 'classical beat', 'sad']},
         {'section_name': 'Synthesis lift', 'duration_ms': 4800, 'lines': [],
-         'positive_local_styles': ['energy lift', 'full groove', 'uplifting chords'], 'negative_local_styles': ['sad']},
+         'positive_local_styles': ['energy lift', 'full groove', 'uplifting major chords', 'ascending melody'], 'negative_local_styles': ['sad']},
         {'section_name': 'Living memory', 'duration_ms': 4600, 'lines': [],
          'positive_local_styles': ['heartbeat-like soft pulse', 'soaring warm pads', 'wonder'], 'negative_local_styles': ['busy drums']},
         {'section_name': 'Neurons fire', 'duration_ms': 3000, 'lines': [],
@@ -51,7 +51,7 @@ MUSIC_PLAN = {
     ],
 }
 MUSIC_PROMPT = ('Instrumental modern organic electronic track for a 44 second product film, 124 bpm, playful, warm synths, soft felt piano and '
-                'gentle organic percussion. Sparse intro, rising build, a calm warm chord around 10 seconds, flowing groove, lighter middle, '
+                'gentle organic percussion. Sparse intro, rising build, a calm warm chord around 10 seconds, flowing groove, an uplifting rising middle in a major key, '
                 'uplifting lift, a heartbeat-like wonder section, a bright burst at 36 seconds, then a long natural outro where a warm '
                 'chord rings out and decays into silence. No vocals.')
 
@@ -83,7 +83,7 @@ SFX = {
 # ---- cue sheet: (seconds, sfx, volume) ----
 CUES = [(0.05, 'swell', 0.5), (0.75, 'heart', 0.7)]
 CUES += [(2.0 + i * 0.09, 'drop', 0.4) for i in range(7)]
-CUES += [(3.42, 'flutter', 0.6), (5.72, 'glitch', 0.3), (7.45, 'inhale', 0.45), (8.68, 'tap', 0.8), (8.72, 'calm', 0.75), (8.9, 'shimmer', 0.3),
+CUES += [(3.42, 'flutter', 0.6), (5.72, 'breath', 0.3), (7.45, 'inhale', 0.45), (8.25, 'calm', 0.75), (9.12, 'tap', 0.7), (9.2, 'shimmer', 0.3),
          (9.8, 'breath', 0.4), (10.2, 'breeze', 0.12)]
 CUES += [(11.35 + i * 0.26, 'bubble', 0.24) for i in range(12)]
 CUES += [(15.25, 'breath', 0.55), (16.0, 'drop', 0.6), (16.35, 'synapse', 0.65), (16.55, 'synapse', 0.55), (17.1, 'drop', 0.5), (17.3, 'drop', 0.5),
@@ -93,7 +93,7 @@ CUES += [(15.25, 'breath', 0.55), (16.0, 'drop', 0.6), (16.35, 'synapse', 0.65),
 CUES += [(24.98 + i * 0.36, 'drop', 0.32) for i in range(8)]
 CUES += [(28.4, 'riser', 0.5), (29.0, 'inhale', 0.6), (29.6, 'pulse', 0.7), (30.0, 'drop', 0.5), (30.15, 'drop', 0.5), (30.3, 'drop', 0.5),
          (30.35, 'tendril', 0.65), (30.55, 'tendril', 0.55), (30.75, 'tendril', 0.5),
-         (32.95, 'inhale', 0.5), (33.05, 'bloom', 0.85), (33.9, 'fire', 0.8), (35.9, 'swarm', 0.7), (38.0, 'sting', 0.85), (38.32, 'tap', 0.5)]
+         (32.95, 'inhale', 0.5), (33.05, 'bloom', 0.85), (33.9, 'fire', 0.8), (35.9, 'swarm', 0.7), (38.0, 'sting', 0.85), (38.7, 'tap', 0.5)]
 
 CUES = [(ft(t), n, v) for t, n, v in CUES]
 

@@ -171,28 +171,37 @@ function check(x, y, s, color, k) {
   else { ctx.lineTo(...pts[1]); const q = (k - L1) / (1 - L1); ctx.lineTo(lerp(pts[1][0], pts[2][0], q), lerp(pts[1][1], pts[2][1], q)); }
   ctx.stroke(); ctx.restore();
 }
-// Product logo: two interlocking blocks (traced from the brand artwork, 92×137 units).
-const LOGO_P = [[0, 0], [92, 0], [92, 29], [63, 29], [63, 4], [48, 4], [48, 48], [4, 48], [4, 64], [29, 64], [29, 93], [0, 93]];
-const LOGO_G = [[62, 45], [92, 45], [92, 137], [0, 137], [0, 108], [27, 108], [27, 133], [45, 133], [45, 90], [88, 90], [88, 75], [62, 75]];
-const LOGO_PC = '#7F5FDC', LOGO_GC = '#5FB548';
-function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const q of pts) ctx.lineTo(q[0], q[1]); ctx.closePath(); }
-// k: 0→1 intro. The blocks rush in from opposite corners, lock together with a squash, sparks and a soft ripple.
+// Product logo: the edge of one group (top arc), the edge of another (bottom arc), and the line that connects them.
+// Geometry in logo units, centered on (60, 62); strokes 14 wide with round ends.
+const LOGO_C = '#5966F1';
+const ARC_T = [[35, 26], [60, 35], [85, 26]], ARC_B = [[35, 98], [60, 89], [85, 98]], LINK = [[35, 26], [85, 98]];
+const qpt = (a, u) => bez(a[0], a[1], a[2], u);
+function arcSeg(a, u0, u1) { ctx.beginPath(); const n = 24; for (let i = 0; i <= n; i++) { const p = qpt(a, lerp(u0, u1, i / n)); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); } }
+// k: 0→1 intro. Both arcs unfold from their middles (each briefly showing the group circle it bounds),
+// then the connecting line draws from the top arc to the bottom arc and the mark settles with a soft ripple.
 function mark(x, y, s, k = 1, t = 0) {
-  const HIT = 0.42, inK = clamp(k / HIT), after = P(k, HIT, 1), sc = s / 137;
-  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-46, -68.5);
-  if (k > HIT && k < 1) {   // ripple and sparks at the moment of contact
-    for (let r = 0; r < 2; r++) { const f = P(after, r * 0.12, 0.75 + r * 0.12); if (f <= 0 || f >= 1) continue; ctx.strokeStyle = hexA(r ? LOGO_GC : LOGO_PC, 0.5 * (1 - f)); ctx.lineWidth = 6 * (1 - f) + 1; ctx.beginPath(); ctx.arc(46, 70, 40 + eOutExpo(f) * 190, 0, 7); ctx.stroke(); }
-    const R4 = rng(41);
-    for (let i = 0; i < 18; i++) { const a = R4() * Math.PI * 2, d = eOutExpo(P(after, 0, 0.55)) * (60 + R4() * 90), f = P(after, 0.05, 0.6); if (f >= 1) continue; ctx.fillStyle = hexA(i % 2 ? LOGO_GC : LOGO_PC, 0.9 * (1 - f)); ctx.beginPath(); ctx.arc(46 + Math.cos(a) * d, 70 + Math.sin(a) * d, 4 * (1 - f) + 1, 0, 7); ctx.fill(); }
+  const sc = s / 100;
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-60, -62);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = LOGO_C; ctx.lineWidth = 14;
+  const uT = eOutExpo(P(k, 0, 0.42)), uB = eOutExpo(P(k, 0.08, 0.5)), uL = eInOut(P(k, 0.45, 0.8)), settle = P(k, 0.8, 1);
+  if (k < 1) {   // the groups the edges belong to, glimpsed while the arcs open
+    for (const [cy, f, dir] of [[-41, P(k, 0, 0.6), 1], [165, P(k, 0.08, 0.68), -1]]) {
+      if (f <= 0 || f >= 1) continue;
+      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = hexA(LOGO_C, 0.35 * Math.sin(f * Math.PI));
+      ctx.beginPath(); ctx.arc(60, cy, 76 * (0.7 + 0.3 * eOut3(f)), 0, 7); ctx.stroke();
+      ctx.fillStyle = hexA(LOGO_C, 0.06 * Math.sin(f * Math.PI)); ctx.fill(); ctx.restore();
+    }
   }
-  const e = inK * inK * inK, sq = k >= 1 ? 0 : 0.14 * Math.exp(-6 * after) * Math.sin(after * 20) * (k > HIT ? 1 : 0);
-  const shapes = [[LOGO_P, LOGO_PC, [34, 38], [-230, -190], -0.55, 1], [LOGO_G, LOGO_GC, [58, 100], [230, 190], 0.55, -1]];
-  for (const [pts, col, [cx, cy], [ox, oy], rot, dir] of shapes) {
-    ctx.save(); ctx.globalAlpha *= clamp(inK * 5);
-    ctx.translate(cx + ox * (1 - e), cy + oy * (1 - e)); ctx.rotate(rot * (1 - e)); ctx.scale(1 + sq * dir, 1 - sq * dir); ctx.translate(-cx, -cy);
-    poly(pts); ctx.fillStyle = col; ctx.fill();
-    ctx.restore();
+  const pop = settle > 0 && settle < 1 ? 1 + 0.06 * Math.sin(settle * Math.PI) : 1;
+  ctx.translate(60, 62); ctx.scale(pop, pop); ctx.translate(-60, -62);
+  if (uT > 0) { arcSeg(ARC_T, 0.5 - uT / 2, 0.5 + uT / 2); ctx.stroke(); }
+  if (uB > 0) { arcSeg(ARC_B, 0.5 - uB / 2, 0.5 + uB / 2); ctx.stroke(); }
+  if (uL > 0) {
+    const e = [lerp(LINK[0][0], LINK[1][0], uL), lerp(LINK[0][1], LINK[1][1], uL)];
+    ctx.beginPath(); ctx.moveTo(...LINK[0]); ctx.lineTo(...e); ctx.stroke();
+    if (uL < 1) { const g = ctx.createRadialGradient(e[0], e[1], 0, e[0], e[1], 22); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(0.4, hexA(LOGO_C, 0.5)); g.addColorStop(1, hexA(LOGO_C, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(e[0], e[1], 22, 0, 7); ctx.fill(); }
   }
+  if (settle > 0 && settle < 1) { ctx.lineWidth = 3 * (1 - settle); ctx.strokeStyle = hexA(LOGO_C, 0.45 * (1 - settle)); ctx.beginPath(); ctx.arc(60, 62, 55 + eOutExpo(settle) * 90, 0, 7); ctx.stroke(); }
   ctx.restore();
 }
 
@@ -278,7 +287,7 @@ const SPECIAL = { x: 1250, y: 640 };
 function camera(t) {
   let x = W / 2, y = H / 2, z = 1, rot = 0;
   if (t < 3.4) { z = 1 + 0.03 * t; }
-  else if (t < 7.6) { z = 1.02 + 0.04 * P(t, 3.4, 7.6); const sh = P(t, 5.75, 6.25); if (sh > 0 && sh < 1) { x += Math.sin(t * 90) * 10 * (1 - sh); y += Math.cos(t * 70) * 7 * (1 - sh); } }
+  else if (t < 7.6) { z = 1.02 + 0.04 * P(t, 3.4, 7.6) + 0.035 * eInOut(P(t, 5.55, 6.4)); }
   else if (t < 9.6) { z = 1 + 0.06 * eOut3(P(t, 8.2, 9.6)); }
   else if (t < 15.2) { z = 1 + 0.05 * P(t, 9.6, 15.2); }
   else if (t < 19.4) { const k = eInOut(P(t, 15.2, 16.3)); x = lerp(W / 2, 1245, k); y = lerp(H / 2, 480, k); z = lerp(1.05, 1.8, k) + 0.05 * P(t, 16.3, 19.4); }
@@ -390,6 +399,8 @@ function frame(t) {
   if (t > 3.4 && t < 8.4) {
     ctx.save(); applyCam(cam);
     const imp = P(t, 7.55, 8.2);
+    const dof = eOut3(P(t, 5.55, 6.15)) * (1 - P(t, 7.3, 7.6));
+    if (dof > 0.01) { ctx.filter = `blur(${(dof * 7).toFixed(2)}px)`; ctx.globalAlpha = 1 - 0.45 * dof; }
     for (const c of CHAOS) {
       const u = P(t, c.t0, c.t0 + 0.9); if (u <= 0) continue;
       const o = [W / 2 + (c.oi - 3) * 150, 620];
@@ -399,6 +410,7 @@ function frame(t) {
       if (imp > 0) { const k = eInBack(imp); x = lerp(x, W / 2, k); y = lerp(y, H / 2, k); rot += k * 3; sc *= 1 - k; }
       card(x, y, { src: c.src, title: c.title, meta: SRC_NAME[c.src], w: 330, h: 84, rot, scale: sc });
     }
+    ctx.filter = 'none'; ctx.globalAlpha = 1;
     // captions with a white halo so they read over the pile
     const cap = (s, a, glitch) => {
       if (a <= 0) return;
@@ -408,19 +420,33 @@ function frame(t) {
       ctx.restore();
     };
     cap('Scattered across 7 apps.', P(t, 4.0, 4.3) * (1 - P(t, 5.55, 5.75)), false);
-    const g = P(t, 5.75, 6.2);
-    cap('Impossible to find.', P(t, 5.75, 5.85) * (1 - P(t, 7.3, 7.6)), g > 0 && g < 1 && Math.floor(t * 30) % 2 === 0);
+    // letters come into focus one by one
+    const line = 'Impossible to find.', out = 1 - P(t, 7.3, 7.6);
+    if (t > 5.7 && out > 0) {
+      ctx.save(); ctx.font = font(104); ctx.letterSpacing = `${-0.03 * 104}px`;
+      let lx = W / 2 - ctx.measureText(line).width / 2;
+      for (let i = 0; i < line.length; i++) {
+        const a = eOut3(P(t, 5.75 + i * 0.03, 6.25 + i * 0.03)), ch = line[i];
+        if (a > 0) {
+          ctx.filter = a < 0.98 ? `blur(${((1 - a) * 14).toFixed(2)}px)` : 'none';
+          ctx.shadowColor = 'rgba(250,251,253,1)'; ctx.shadowBlur = 36;
+          for (let k = 0; k < 2; k++) text(ch, lx, H / 2 + (1 - a) * 18, 104, { align: 'left', alpha: a * out, ls: -0.03 });
+        }
+        lx += ctx.measureText(ch).width;
+      }
+      ctx.restore();
+    }
     ctx.restore();
   }
   /* flash + wordmark (8.2–10.2) */
   if (t > 8.15 && t < 10.4) {
     const f = P(t, 8.18, 8.9);
-    inkBloom(W / 2 - 330, H / 2, P(t, 8.7, 9.8), t, 0.55, 0.14);
-    if (t > 8.7) { ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - P(t, 8.7, 9.0))})`; ctx.fillRect(0, 0, W, H); }
+    inkBloom(W / 2 - 330, H / 2, P(t, 9.0, 10.0), t, 0.5, 0.12);
+    
     const mv = eInOut(P(t, 9.65, 10.25));
     const x = lerp(W / 2, 250, mv), y = lerp(H / 2, 70, mv), s = lerp(1, 0.32, mv);
     ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-    mark(-420, 0, 150, P(t, 8.2, 9.4), t);
+    mark(-400, 0, 150, P(t, 8.2, 9.5), t);
     const word = 'Full Context Canvas';
     ctx.font = font(112); ctx.letterSpacing = '-3.4px';
     let cx = -330;
@@ -431,7 +457,7 @@ function frame(t) {
     }
     ctx.restore();
   }
-  if (t >= 10.4 && t < 36.2) { ctx.save(); ctx.globalAlpha = 1 - P(t, 35.6, 36.2); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-420, 0, 150, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
+  if (t >= 10.4 && t < 36.2) { ctx.save(); ctx.globalAlpha = 1 - P(t, 35.6, 36.2); ctx.translate(250, 70); ctx.scale(0.32, 0.32); mark(-400, 0, 150, 1); text('Full Context Canvas', -330, 0, 112, { align: 'left', ls: -0.03 }); ctx.restore(); }
 
   /* 4 — sort (9.6–15.2), network stays for the rest */
   if (t > 9.6) {
