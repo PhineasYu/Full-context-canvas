@@ -11,6 +11,8 @@
 | `prototype/index.html` | 可交互原型,直接用浏览器打开 |
 | `prototype/app.html` | 原型源码(发布到 claude.ai 的版本) |
 | `prototype/build.mjs` | 把 `app.html` 包成独立的 `index.html`:`node prototype/build.mjs` |
+| `extension/` | Chrome 插件 MVP：读取全部书签，Claude 分组，实时同步。安装方法见 `extension/README.md` |
+| `docs/RESEARCH.md` | 竞品调研、定位和下一步建议 |
 | `docs/PRODUCT_PLAN.md` | 产品定义、3 分钟演示脚本、技术方案、开发路线、投资人问答 |
 
 ## 原型能做什么

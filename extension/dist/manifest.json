@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Full Context Canvas",
+  "version": "0.1.0",
+  "description": "Your bookmarks on one canvas, sorted into overlapping groups with a reason for every placement. Originals are never changed.",
+  "permissions": [
+    "bookmarks",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Full Context Canvas",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

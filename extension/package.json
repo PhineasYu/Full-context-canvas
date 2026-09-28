@@ -1,0 +1,10 @@
+{
+  "name": "full-context-canvas-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chrome extension: your bookmarks on the Full Context Canvas, sorted by Claude with a reason for every placement.",
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": { "@anthropic-ai/sdk": "latest" },
+  "devDependencies": { "esbuild": "^0.25.0" }
+}

@@ -943,7 +943,7 @@ function renderChrome() {
 function renderAIPill() {
   const live = !!sampleFn && !S.forceCanned;
   $('#pill-ai').classList.toggle('live', live);
-  $('#pill-ai-t').textContent = live ? L('AI 实时:Claude', 'Live AI: Claude') : L('离线演示', 'Offline demo');
+  $('#pill-ai-t').textContent = live ? L('AI 实时:Claude', 'Live AI: Claude') : window.FCC_DATA ? L('离线规则', 'Offline rules') : L('离线演示', 'Offline demo');
 }
 
 /* ================= render: dock ================= */
@@ -995,7 +995,7 @@ function renderCanvas() {
     const srcs = new Set(S.items.filter((it) => it.g[g.id]).map((it) => it.src)).size;
     return `<button type="button" class="hub${rel.gs.has(g.id) ? ' hi' : ''}${S.focus === g.id ? ' focus' : ''}" data-group="${g.id}" style="left:${g.hub[0]}px;top:${g.hub[1] - 46}px" aria-label="${esc(tr(g.name))}">
       <div class="gn">${esc(tr(g.name))}</div>
-      <div class="gm">${L(`${n} 条 · 来自 ${srcs} 个平台`, `${n} items · from ${srcs} platforms`)}</div></button>`;
+      <div class="gm">${L(`${n} 条 · 来自 ${srcs} 个平台`, `${n} ${n === 1 ? 'item' : 'items'} · from ${srcs} ${srcs === 1 ? 'platform' : 'platforms'}`)}</div></button>`;
   }).join('');
   // cards: keep elements to preserve transitions
   const existing = new Map([...cardsEl.children].map((c) => [c.dataset.id, c]));
@@ -1392,6 +1392,20 @@ function memBlock(it, gid, m) {
     <div class="acts">${you ? '' : `<button type="button" class="btn sm" data-act="confirm" data-id="${it.id}" data-g="${gid}">✓ ${L('对', 'Right')}</button>`}<button type="button" class="btn sm ghost" data-act="remove" data-id="${it.id}" data-g="${gid}">✕ ${L('不属于这里', 'Doesn\'t belong')}</button></div>
   </div>`;
 }
+// A context pack: the items of a group or intersection, with sources and reasons, ready to paste into any AI.
+function contextPack(title, def, list, gids) {
+  const lines = [`# ${title}`, def ? `\n${def}` : '', `\n${L(`来自 Full Context Canvas:${list.length} 条收藏,${new Set(list.map((it) => it.src)).size} 个平台。`, `From Full Context Canvas: ${list.length} saves across ${new Set(list.map((it) => it.src)).size} platform(s).`)}\n`];
+  for (const it of list) {
+    const why = gids.map((g) => it.g[g] && (LANG === 'zh' ? it.g[g][1] : it.g[g][2])).filter(Boolean).join(' / ');
+    lines.push(`- ${it.url ? `[${it.t}](${it.url})` : it.t} — ${SRC[it.src].n}${it.when ? `, ${it.when}` : ''}${why ? `. ${why}` : ''}`);
+  }
+  return lines.join('\n');
+}
+async function copyPack(text) {
+  try { await navigator.clipboard.writeText(text); toast(L('已复制。粘贴到 Claude、ChatGPT 或 Gemini 里就能用。', 'Copied. Paste it into Claude, ChatGPT or Gemini.')); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast(L('已复制。', 'Copied.')); } catch (e2) { toast(L('复制失败,请手动选择文字。', 'Copy failed; select the text manually.')); } ta.remove(); }
+}
+const packBtn = (attrs) => `<button type="button" class="btn sm" ${attrs}>${L('复制为 AI 上下文', 'Copy as AI context')}</button>`;
 function groupView(g) {
   if (!g) return '';
   const mem = S.items.filter((it) => it.g[g.id]);
@@ -1400,6 +1414,7 @@ function groupView(g) {
   <div class="srcline"><span class="gdot" style="background:${g.c}"></span><span>${L('AI 生成的组', 'Group made by AI')}</span></div>
   <h2>${esc(tr(g.name))}</h2>
   <div class="box"><div class="lbl" style="margin-bottom:6px">${L('这个组收什么', 'What belongs here')}</div>${esc(tr(g.def))}</div>
+  <div style="display:flex;gap:8px;align-items:center">${packBtn(`data-act="pack-group" data-g="${g.id}"`)}<span class="note">${L('带上理由和链接,交给任何一个 AI', 'With reasons and links, for any AI')}</span></div>
   <div class="note">${L(`${mem.length} 条,来自 ${Object.keys(bySrc).length} 个平台。一条收藏可以同时属于好几个组,重叠的地方就是它们的交集。`, `${mem.length} items from ${Object.keys(bySrc).length} platforms. One save can belong to several groups; where the shapes overlap is the intersection.`)}</div>
   ${(() => { const xs = intersections().filter((x) => x.a === g.id || x.b === g.id); return xs.length ? `<div class="lbl">${L('和其他组的交汇', 'Where it meets other groups')}</div><div class="xlist">${xs.map(xRow).join('')}</div>` : ''; })()}
   ${Object.entries(bySrc).map(([sid, arr]) => `<div class="list"><div class="srcline" style="margin:4px 0">${srcChip(sid)}<b style="color:var(--ink)">${SRC[sid].n}</b><span>${arr.length}</span></div>${arr.map((it) => evtRow(it, null, [g.id])).join('')}</div>`).join('')}`;
@@ -1412,6 +1427,7 @@ function interView(a, b) {
   return `${backBtn()}
   <div class="srcline"><span class="gdot" style="background:${S.groups[a].c}"></span><span class="gdot" style="background:${S.groups[b].c}"></span><span>${L('交汇点', 'Intersection')}</span></div>
   <h2>${esc(gName(a))} × ${esc(gName(b))}</h2>
+  <div>${packBtn(`data-act="pack-inter" data-a="${a}" data-b="${b}"`)}</div>
   <p class="note" style="margin:0">${L(`${sh.length} 条收藏同时属于这两个组,来自 ${srcs.size} 个平台。交汇处常常是你还没说出口、但已经在琢磨的方向。`, `${sh.length} saves belong to both groups, from ${srcs.size} platforms. Intersections are often the idea you are already circling but have not said out loud.`)}</p>
   <div class="list">${sh.map((it) => `${evtRow(it)}<div class="note" style="padding:0 8px 8px 40px;font-size:12px">${esc(tr([it.g[a][1], it.g[a][2]]))} ${esc(tr([it.g[b][1], it.g[b][2]]))}</div>`).join('')}</div>`;
 }
@@ -1551,6 +1567,8 @@ pbody.addEventListener('click', (e) => {
   if (act === 'open') return select({ type: 'item', id }, { center: true });
   if (act === 'group') return select({ type: 'group', id: gid });
   if (act === 'inter') return focusInter(b.dataset.a, b.dataset.b);
+  if (act === 'pack-group') { const g = S.groups[gid]; return copyPack(contextPack(tr(g.name), tr(g.def), S.items.filter((it) => it.g[gid]), [gid])); }
+  if (act === 'pack-inter') { const a = b.dataset.a, c = b.dataset.b; return copyPack(contextPack(`${gName(a)} × ${gName(c)}`, '', sharedItems(a, c), [a, c])); }
   if (act === 'confirm') return confirmMem(id, gid);
   if (act === 'remove') return removeMem(id, gid);
   if (act === 'addg') { const v = $('#addg-sel').value; if (v) addMem(id, v); return; }
@@ -1592,7 +1610,15 @@ function addMem(id, gid) {
   toast(`+ ${L('已加入', 'Added to')}`, gid);
   rerenderAfterEdit(it);
 }
+// Hand the current placements to a host that stores them (the browser extension); no-op on the web demo.
+function persist() {
+  if (typeof window.FCC_SAVE !== 'function') return;
+  const items = S.items.map(({ id, src, t, meta, when, loc, url, folder, snip, g }) => ({ id, src, t, meta, when, loc, url, folder, snip, g }));
+  const groups = {}; for (const [k, g] of Object.entries(S.groups)) groups[k] = { name: g.name, def: g.def, c: g.c, hub: g.hub, extra: g.extra };
+  try { window.FCC_SAVE({ items, groups }); } catch (e) {}
+}
 function rerenderAfterEdit(it) {
+  persist();
   world.classList.add('anim');
   layoutSome([it]);
   renderCanvas(); renderDock(); renderPanel();
@@ -1670,6 +1696,12 @@ try {
     window.claude.use('sample').then((f) => { if (f) { sampleFn = f; renderAIPill(); if (S.tab === 'synth' && !S.sel) renderPanel(); } }).catch(() => {});
   }
 } catch (e) {}
+// In the browser extension, Claude is reached through the background worker with the user's own key.
+if (!sampleFn && typeof window.FCC_ASK === 'function') {
+  const ask = async (prompt, o = {}) => { const r = await window.FCC_ASK(prompt); if (r && r.error) throw { code: r.code || 'upstream_error', message: r.error }; o.onText?.({ text: r.text, delta: r.text }); return { text: r.text, truncated: false }; };
+  ask.json = async (prompt) => { const { text } = await ask(prompt + '\n\nReply with only the JSON value.'); const m = text.match(/[\[{][\s\S]*[\]}]/); if (!m) throw { code: 'invalid_json' }; return JSON.parse(m[0]); };
+  sampleFn = ask;
+}
 const disableLive = (code) => ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code);
 
 /* ================= synthesis ================= */
@@ -1734,6 +1766,11 @@ ${itemsForPrompt()}`;
     S.synth.text = hits.length
       ? (L(`## 和「${q}」相关的收藏\n`, `## Saves related to "${q}"\n`) + hits.map((it) => `- ${it.t} [${it.id}]`).join('\n'))
       : L(`## 离线模式\n在离线演示里只能回答上面三个示例问题。连上实时 AI 后,可以问任何问题。`, `## Offline mode\nThe offline demo answers the three example questions. With live AI connected you can ask anything.`);
+    paintSynth(true); return;
+  }
+  if (!CANNED[preset.k]) {
+    S.synth.done = true; S.synth.live = false;
+    S.synth.text = L('## 需要连接 Claude\n在插件设置里填入 Claude API key,就能对你的全部收藏提问。', '## Connect Claude\nAdd a Claude API key in the extension settings to ask questions across everything you saved.');
     paintSynth(true); return;
   }
   const full = CANNED[preset.k][LANG === 'zh' ? 0 : 1];
@@ -1978,6 +2015,7 @@ async function organize(list) {
   progress('');
   fit(true);
   const q = list.filter((it) => S.byId[it.id] && isQ(S.byId[it.id])).length;
+  persist();
   toast(L(`整理完了 ${list.length} 条。${q ? `${q} 条拿不准,在「待确认」里等你。` : ''}`, `Sorted ${list.length} items.${q ? ` ${q} need your review.` : ''}`));
   if (note) toast(note);
   renderPanel();
@@ -2145,6 +2183,20 @@ $('#hint-x').addEventListener('click', () => { $('#hint').hidden = true; });
 $('#z-in').addEventListener('click', () => { const r = stage.getBoundingClientRect(); zoomAt(1.25, r.width / 2, r.height / 2); });
 $('#z-out').addEventListener('click', () => { const r = stage.getBoundingClientRect(); zoomAt(0.8, r.width / 2, r.height / 2); });
 $('#z-fit').addEventListener('click', () => fit(true));
+
+/* ================= live updates from the host (browser extension) ================= */
+window.FCC_APPLY = async (data) => {
+  if (!data || !Array.isArray(data.items)) return;
+  for (const [k, g] of Object.entries(data.groups || {})) if (!S.groups[k]) S.groups[k] = { ...g, id: k };
+  const incoming = new Set(data.items.map((it) => it.id));
+  const gone = S.items.filter((it) => !incoming.has(it.id));
+  if (gone.length) { S.items = S.items.filter((it) => incoming.has(it.id)); for (const it of gone) delete S.byId[it.id]; renderCanvas(); renderDock(); renderPanel(); }
+  for (const raw of data.items) {
+    const cur = S.byId[raw.id];
+    if (!cur) await arrive(raw, { center: true });
+    else if (JSON.stringify(cur.g) !== JSON.stringify(raw.g) && !Object.values(cur.g).some((m) => m[3] === 'you')) { cur.g = raw.g; rerenderAfterEdit(cur); }
+  }
+};
 
 /* ================= boot ================= */
 for (const raw of SEED) addItem(raw);

@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Full Context Canvas · Settings</title>
+<style>
+@font-face{font-family:"Instrument Sans";font-weight:400;src:url(fonts/instrument-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Instrument Sans";font-weight:500;src:url(fonts/instrument-sans-latin-500-normal.woff2) format("woff2")}
+:root{--bg:#FAFBFD;--card:#fff;--ink:#151B28;--muted:#687386;--line:#E1E6EE;--accent:#3D5CE0;--warn:#A8700F;--ok:#2E8A5C}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Instrument Sans","PingFang SC","Noto Sans SC",system-ui,sans-serif}
+main{max-width:620px;margin:0 auto;padding:48px 20px;display:flex;flex-direction:column;gap:18px}
+h1{font-weight:500;font-size:26px;margin:0;display:flex;gap:12px;align-items:center}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px}
+label{font-weight:500}
+input{height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);font:inherit;font-weight:500;cursor:pointer}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.note{color:var(--muted);font-size:13px}
+#msg{min-height:20px}
+</style></head>
+<body><main>
+<h1><svg width="24" height="30" viewBox="20 12 80 100" aria-hidden="true"><g fill="none" stroke="#5966F1" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><path d="M35 26Q60 35 85 26"/><path d="M35 26L85 98"/><path d="M35 98Q60 89 85 98"/></g></svg><span id="h"></span></h1>
+<div class="box">
+  <label for="key" id="kl"></label>
+  <input id="key" type="password" autocomplete="off" placeholder="sk-ant-...">
+  <p class="note" id="kn"></p>
+  <div class="row"><button class="pri" id="save"></button><button id="test"></button></div>
+  <div id="msg" class="note"></div>
+</div>
+<div class="box">
+  <label id="rl"></label>
+  <p class="note" id="rn"></p>
+  <div class="row"><button id="resort"></button><button id="open"></button></div>
+</div>
+</main>
+<script src="options.js"></script>
+</body></html>
